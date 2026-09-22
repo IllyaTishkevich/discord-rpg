@@ -1,0 +1,54 @@
+.arena {
+  padding: 24px;
+  color: #fff;
+}
+
+.arena__action {
+  margin-top: 16px;
+  background: #5865f2;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.arena__action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.arena__board {
+  margin-top: 20px;
+}
+
+.arena__side {
+  margin-bottom: 16px;
+}
+
+.arena__side p {
+  margin: 0 0 8px;
+  opacity: 0.7;
+  font-size: 14px;
+}
+
+.arena__coins {
+  display: flex;
+  gap: 12px;
+}
+
+.arena__hint {
+  font-size: 14px;
+  opacity: 0.85;
+  margin: 12px 0;
+}
+
+.arena__result {
+  margin-top: 16px;
+}
+
+.arena__error {
+  color: #f23f42;
+  margin-top: 12px;
+}

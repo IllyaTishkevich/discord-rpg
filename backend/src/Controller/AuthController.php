@@ -41,6 +41,7 @@ class AuthController extends AbstractApiController
 
         return $this->json([
             'token' => $jwtManager->create($user),
+            'discordAccessToken' => $profile['accessToken'],
             'user' => [
                 'id' => $user->getId(),
                 'discordId' => $user->getDiscordId(),

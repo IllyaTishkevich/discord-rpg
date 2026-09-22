@@ -1,0 +1,29 @@
+.battle-result {
+  padding: 24px;
+  color: #fff;
+  text-align: center;
+}
+
+.battle-result__title--won {
+  color: #23a55a;
+}
+
+.battle-result__title--lost {
+  color: #f23f42;
+}
+
+.battle-result__rewards {
+  font-size: 18px;
+  margin-top: 8px;
+}
+
+.battle-result__continue {
+  margin-top: 20px;
+  background: #5865f2;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}

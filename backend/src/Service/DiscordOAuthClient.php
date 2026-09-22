@@ -8,6 +8,10 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 /**
  * Exchanges a Discord OAuth2 authorization code for an access token and
  * fetches the corresponding Discord user profile.
+ *
+ * The code comes from the Discord Embedded App SDK's `authorize` command
+ * (run inside the Activity iframe), which — unlike a normal web OAuth2
+ * flow — has no redirect step, so no redirect_uri is sent here either.
  */
 class DiscordOAuthClient
 {
@@ -15,12 +19,11 @@ class DiscordOAuthClient
         private readonly HttpClientInterface $httpClient,
         #[Autowire(env: 'DISCORD_CLIENT_ID')] private readonly string $clientId,
         #[Autowire(env: 'DISCORD_CLIENT_SECRET')] private readonly string $clientSecret,
-        #[Autowire(env: 'DISCORD_REDIRECT_URI')] private readonly string $redirectUri,
     ) {
     }
 
     /**
-     * @return array{id: string, username: string, avatar: ?string}
+     * @return array{id: string, username: string, avatar: ?string, accessToken: string}
      */
     public function fetchProfileForCode(string $code): array
     {
@@ -30,7 +33,6 @@ class DiscordOAuthClient
                 'client_secret' => $this->clientSecret,
                 'grant_type' => 'authorization_code',
                 'code' => $code,
-                'redirect_uri' => $this->redirectUri,
             ],
         ]);
 
@@ -48,6 +50,7 @@ class DiscordOAuthClient
             'id' => $profile['id'],
             'username' => $profile['username'],
             'avatar' => $profile['avatar'] ?? null,
+            'accessToken' => $accessToken,
         ];
     }
 }

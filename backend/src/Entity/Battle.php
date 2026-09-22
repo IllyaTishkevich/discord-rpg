@@ -46,6 +46,22 @@ class Battle
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $finishedAt = null;
 
+    /**
+     * Both sides' bits thrown for the round currently awaiting resolution —
+     * set by "throw", consumed and cleared by "resolve". Storing this
+     * server-side (rather than trusting the client to echo it back) is what
+     * lets the player see the board and choose action targets before
+     * damage is computed, without letting them fake their own throw.
+     *
+     * @var array{faceA: string, faceB: string, thrownFace: string}[]|null
+     */
+    #[ORM\Column(type: 'json', nullable: true)]
+    private ?array $pendingPlayerThrows = null;
+
+    /** @var array{faceA: string, faceB: string, thrownFace: string}[]|null */
+    #[ORM\Column(type: 'json', nullable: true)]
+    private ?array $pendingOpponentThrows = null;
+
     #[ORM\OneToMany(mappedBy: 'battle', targetEntity: BattleRound::class, orphanRemoval: true)]
     #[ORM\OrderBy(['roundNumber' => 'ASC'])]
     private Collection $rounds;
@@ -128,6 +144,29 @@ class Battle
     public function getFinishedAt(): ?\DateTimeImmutable
     {
         return $this->finishedAt;
+    }
+
+    public function hasPendingThrow(): bool
+    {
+        return null !== $this->pendingPlayerThrows;
+    }
+
+    public function getPendingPlayerThrows(): ?array
+    {
+        return $this->pendingPlayerThrows;
+    }
+
+    public function getPendingOpponentThrows(): ?array
+    {
+        return $this->pendingOpponentThrows;
+    }
+
+    public function setPendingThrows(?array $playerThrows, ?array $opponentThrows): static
+    {
+        $this->pendingPlayerThrows = $playerThrows;
+        $this->pendingOpponentThrows = $opponentThrows;
+
+        return $this;
     }
 
     /**

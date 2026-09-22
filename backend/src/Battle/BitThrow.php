@@ -23,6 +23,26 @@ final class BitThrow
     }
 
     /**
+     * @return array{faceA: string, faceB: string, thrownFace: string}
+     */
+    public function toArray(): array
+    {
+        return [
+            'faceA' => $this->faceA->value,
+            'faceB' => $this->faceB->value,
+            'thrownFace' => $this->thrownFace->value,
+        ];
+    }
+
+    /**
+     * @param array{faceA: string, faceB: string, thrownFace: string} $data
+     */
+    public static function fromArray(array $data): self
+    {
+        return new self(BitFace::from($data['faceA']), BitFace::from($data['faceB']), BitFace::from($data['thrownFace']));
+    }
+
+    /**
      * Turns the coin over to its other face — the effect of an opponent's
      * "action" flip.
      */

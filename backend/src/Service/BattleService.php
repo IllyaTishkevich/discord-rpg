@@ -4,6 +4,7 @@ namespace App\Service;
 
 use App\Battle\BitThrow;
 use App\Battle\CombatResolver;
+use App\Battle\ThrowResult;
 use App\Entity\Battle;
 use App\Entity\BattleRound;
 use App\Entity\Bit;
@@ -12,12 +13,19 @@ use App\Enum\BattleStatus;
 use App\Enum\BitFace;
 use App\Exception\BattleAlreadyFinishedException;
 use App\Exception\InsufficientEnergyException;
+use App\Exception\NoPendingThrowException;
 use App\Repository\BitRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Application service orchestrating PvE battles: starting a fight against
- * the training bot and resolving individual rounds via CombatResolver.
+ * the training bot, then resolving each round in two steps so the player
+ * can see the revealed bits before spending any "action" faces they rolled:
+ *
+ *  1. throwRound()   — both sides' bits are thrown and stored on the Battle
+ *  2. resolveRound()  — the player's action targets are applied, damage is
+ *                        computed via CombatResolver, and the pending throw
+ *                        is cleared
  */
 class BattleService
 {
@@ -28,8 +36,8 @@ class BattleService
         [BitFace::Attack, BitFace::Action],
         [BitFace::Defense, BitFace::Defense],
     ];
-    private const XP_REWARD = 10;
-    private const COIN_REWARD = 5;
+    public const XP_REWARD = 10;
+    public const COIN_REWARD = 5;
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -53,28 +61,48 @@ class BattleService
         return $battle;
     }
 
-    /**
-     * @param int[] $playerActionTargets indices into the opponent's thrown bits to flip
-     */
-    public function playRound(Battle $battle, array $playerActionTargets): BattleRound
+    public function throwRound(Battle $battle): ThrowResult
     {
         if (BattleStatus::InProgress !== $battle->getStatus()) {
             throw new BattleAlreadyFinishedException('This battle has already finished.');
         }
 
-        $character = $battle->getCharacter();
-
         $playerThrows = array_map(
             static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB()),
-            $this->bitRepository->findByCharacter($character),
+            $this->bitRepository->findByCharacter($battle->getCharacter()),
         );
         $opponentThrows = array_map(
             static fn (array $faces) => BitThrow::random($faces[0], $faces[1]),
             self::MONSTER_BITS,
         );
 
+        $battle->setPendingThrows(
+            array_map(static fn (BitThrow $t) => $t->toArray(), $playerThrows),
+            array_map(static fn (BitThrow $t) => $t->toArray(), $opponentThrows),
+        );
+        $this->entityManager->flush();
+
+        $playerActionCount = \count(array_filter($playerThrows, static fn (BitThrow $t) => BitFace::Action === $t->thrownFace));
+
+        return new ThrowResult($playerThrows, $opponentThrows, $playerActionCount);
+    }
+
+    /**
+     * @param int[] $playerActionTargets indices into the opponent's thrown bits to flip
+     */
+    public function resolveRound(Battle $battle, array $playerActionTargets): BattleRound
+    {
+        if (!$battle->hasPendingThrow()) {
+            throw new NoPendingThrowException('No pending throw to resolve — call throwRound() first.');
+        }
+
+        $playerThrows = array_map(BitThrow::fromArray(...), $battle->getPendingPlayerThrows());
+        $opponentThrows = array_map(BitThrow::fromArray(...), $battle->getPendingOpponentThrows());
+        $battle->setPendingThrows(null, null);
+
         $result = $this->combatResolver->resolveRound($playerThrows, $opponentThrows, $playerActionTargets);
 
+        $character = $battle->getCharacter();
         $character->setHp($character->getHp() - $result->damageToPlayer);
         $battle->setOpponentHp($battle->getOpponentHp() - $result->damageToOpponent);
         $battle->incrementRoundNumber();

@@ -1,4 +1,9 @@
-const BASE_URL = import.meta.env.VITE_BACKEND_API_URL ?? "http://localhost:8000/api";
+// Inside a real Discord Activity iframe, external requests must go through
+// Discord's own proxy path (mapped to our backend origin in the Developer
+// Portal's URL Mappings) — direct cross-origin requests are blocked by the
+// iframe's CSP. Outside Discord (plain browser dev), hit the backend directly.
+export const isEmbeddedInDiscord = typeof window !== "undefined" && window.self !== window.top;
+const BASE_URL = isEmbeddedInDiscord ? "/.proxy/api" : (import.meta.env.VITE_BACKEND_API_URL ?? "http://localhost:8000/api");
 
 const AUTH_TOKEN_STORAGE_KEY = "discord-rpg.auth-token";
 
