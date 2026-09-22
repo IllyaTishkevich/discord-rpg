@@ -22,7 +22,7 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/discord-rpg}"
-DEPLOY_USER="${DEPLOY_USER:-discord-rpg}"
+DEPLOY_USER="${DEPLOY_USER:-relikt}"
 BOT_SERVICE="${BOT_SERVICE:-discord-rpg-bot}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-}"
 
@@ -71,16 +71,16 @@ run php bin/console cache:clear --env=prod
 log "backend: restart $PHP_FPM_SERVICE"
 sudo systemctl restart "$PHP_FPM_SERVICE"
 
-log "activity: npm install"
+log "activity: yarn install"
 cd "$APP_DIR/activity"
-run npm install
+run yarn install
 
 log "activity: build"
-run npm run build
+run yarn build
 
-log "bot: npm install"
+log "bot: yarn install"
 cd "$APP_DIR/bot"
-run npm install --omit=dev
+run yarn install --omit=dev
 
 log "bot: restart $BOT_SERVICE"
 sudo systemctl restart "$BOT_SERVICE"
