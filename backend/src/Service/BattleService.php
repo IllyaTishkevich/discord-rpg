@@ -2,6 +2,8 @@
 
 namespace App\Service;
 
+use App\Battle\AbilityChoice;
+use App\Battle\AbilityResolver;
 use App\Battle\BitThrow;
 use App\Battle\CombatResolver;
 use App\Battle\ThrowResult;
@@ -28,9 +30,16 @@ use Doctrine\ORM\EntityManagerInterface;
  * before spending any "action" faces they rolled:
  *
  *  1. throwRound()  — both sides' bits are thrown and stored on the Battle
- *  2. resolveRound() (PvE/event) or submitActions() (PvP) — action targets
- *     are applied, damage is computed via CombatResolver, pending state is
- *     cleared
+ *  2. resolveRound() (PvE/event) or submitActions() (PvP) — an AbilityChoice
+ *     is applied, damage is computed via CombatResolver + AbilityResolver,
+ *     pending state is cleared
+ *
+ * Combat abilities (docs/BATTLE_RULES.md): each round, whichever side has
+ * rolled "action" faces picks ONE ability to spend all of them on — Flip
+ * (the original/default), UnblockableDamage, Reroll, or DamageMirror — not
+ * a mix. The bot opponent in PvE/event battles always uses Flip via
+ * BotActionStrategy (unchanged); abilities are a real-player-only choice
+ * for now.
  *
  * PvP lifecycle (see docs/BATTLE_ROOM_DESIGN.md): createPvpChallenge()
  * creates the Battle itself in `waiting` status — that row *is* the invite.
@@ -61,6 +70,7 @@ class BattleService
         private readonly EntityManagerInterface $entityManager,
         private readonly BitRepository $bitRepository,
         private readonly CombatResolver $combatResolver,
+        private readonly AbilityResolver $abilityResolver,
         private readonly QuestService $questService,
     ) {
     }
@@ -156,12 +166,10 @@ class BattleService
     }
 
     /**
-     * @param int[] $targets indices into the opponent's thrown bits to flip
-     *
      * @return BattleRound|null null while waiting on the other side to submit;
      *                          the resolved round once both sides are in
      */
-    public function submitActions(Battle $battle, Character $viewer, array $targets): ?BattleRound
+    public function submitActions(Battle $battle, Character $viewer, AbilityChoice $choice): ?BattleRound
     {
         if (!$battle->isPvp()) {
             throw new InvalidBattleStateException('submitActions() is PvP-only — use resolveRound() for PvE/event battles.');
@@ -173,20 +181,27 @@ class BattleService
             throw new NoPendingThrowException('No pending throw to resolve — call throwRound() first.');
         }
 
-        $battle->submitActionTargets($this->requireSide($battle, $viewer), $targets);
+        $asOpponentSide = $this->requireSide($battle, $viewer);
+        $rolledActionCount = $this->abilityResolver->countActionFaces(array_map(
+            BitThrow::fromArray(...),
+            $asOpponentSide ? $battle->getPendingOpponentThrows() : $battle->getPendingPlayerThrows(),
+        ));
+        $this->abilityResolver->assertAffordable($choice, $rolledActionCount);
+
+        $battle->submitAbilityChoice($asOpponentSide, $choice->toArray());
         $this->applyRoundTimeoutIfExpired($battle);
 
-        if (!$battle->bothActionTargetsSubmitted()) {
+        if (!$battle->bothAbilityChoicesSubmitted()) {
             $this->entityManager->flush();
 
             return null;
         }
 
-        $characterTargets = $battle->getPendingCharacterActionTargets() ?? [];
-        $opponentTargets = $battle->getPendingOpponentActionTargets() ?? [];
-        $battle->clearPendingActionTargets();
+        $characterChoice = AbilityChoice::fromArray($battle->getPendingCharacterAbilityChoice());
+        $opponentChoice = AbilityChoice::fromArray($battle->getPendingOpponentAbilityChoice());
+        $battle->clearPendingAbilityChoices();
 
-        return $this->computeAndApplyRound($battle, $characterTargets, $opponentTargets);
+        return $this->computeAndApplyRound($battle, $characterChoice, $opponentChoice);
     }
 
     /**
@@ -201,11 +216,11 @@ class BattleService
             return;
         }
 
-        if (null === $battle->getPendingCharacterActionTargets()) {
-            $battle->submitActionTargets(false, []);
+        if (null === $battle->getPendingCharacterAbilityChoice()) {
+            $battle->submitAbilityChoice(false, AbilityChoice::flip()->toArray());
         }
-        if (null === $battle->getPendingOpponentActionTargets()) {
-            $battle->submitActionTargets(true, []);
+        if (null === $battle->getPendingOpponentAbilityChoice()) {
+            $battle->submitAbilityChoice(true, AbilityChoice::flip()->toArray());
         }
     }
 
@@ -275,7 +290,7 @@ class BattleService
      */
     private function throwResultFromThrows(array $playerThrows, array $opponentThrows): ThrowResult
     {
-        $playerActionCount = \count(array_filter($playerThrows, static fn (BitThrow $t) => BitFace::Action === $t->thrownFace));
+        $playerActionCount = $this->abilityResolver->countActionFaces($playerThrows);
 
         return new ThrowResult($playerThrows, $opponentThrows, $playerActionCount);
     }
@@ -283,10 +298,8 @@ class BattleService
     /**
      * PvE/event only — PvP rounds go through submitActions() instead, since
      * both real sides must submit before damage can be computed.
-     *
-     * @param int[] $playerActionTargets indices into the opponent's thrown bits to flip
      */
-    public function resolveRound(Battle $battle, array $playerActionTargets): BattleRound
+    public function resolveRound(Battle $battle, AbilityChoice $characterChoice): BattleRound
     {
         if ($battle->isPvp()) {
             throw new InvalidBattleStateException('resolveRound() is PvE/event-only — use submitActions() for PvP.');
@@ -295,22 +308,35 @@ class BattleService
             throw new NoPendingThrowException('No pending throw to resolve — call throwRound() first.');
         }
 
-        return $this->computeAndApplyRound($battle, $playerActionTargets, null);
+        $rolledActionCount = $this->abilityResolver->countActionFaces(array_map(BitThrow::fromArray(...), $battle->getPendingPlayerThrows()));
+        $this->abilityResolver->assertAffordable($characterChoice, $rolledActionCount);
+
+        // PvE/event opponent (the bot) always uses Flip via BotActionStrategy —
+        // represented here as a Flip choice with no explicit targets so
+        // computeAndApplyRound's post-damage step is a no-op for its side.
+        return $this->computeAndApplyRound($battle, $characterChoice, AbilityChoice::flip());
     }
 
-    /**
-     * @param int[]      $characterActionTargets
-     * @param int[]|null $opponentActionTargets  null for PvE/event (BotActionStrategy decides), a real
-     *                                           array for PvP (the second player's own choice)
-     */
-    private function computeAndApplyRound(Battle $battle, array $characterActionTargets, ?array $opponentActionTargets): BattleRound
+    private function computeAndApplyRound(Battle $battle, AbilityChoice $characterChoice, AbilityChoice $opponentChoice): BattleRound
     {
         $playerThrows = array_map(BitThrow::fromArray(...), $battle->getPendingPlayerThrows());
         $opponentThrows = array_map(BitThrow::fromArray(...), $battle->getPendingOpponentThrows());
         $battle->setPendingThrows(null, null);
         $battle->setRoundDeadlineAt(null);
 
-        $result = $this->combatResolver->resolveRound($playerThrows, $opponentThrows, $characterActionTargets, $opponentActionTargets);
+        $characterActionCount = $this->abilityResolver->countActionFaces($playerThrows);
+        $opponentActionCount = $this->abilityResolver->countActionFaces($opponentThrows);
+
+        $playerThrows = $this->abilityResolver->applyPreDamage($playerThrows, $characterChoice);
+        // Reroll only applies to a real PvP opponent choosing it — for PvE/event
+        // the "opponent" is always the bot's fixed Flip choice, so this is a no-op there.
+        $opponentThrows = $this->abilityResolver->applyPreDamage($opponentThrows, $opponentChoice);
+
+        $characterFlipTargets = $this->abilityResolver->effectiveFlipTargets($characterChoice);
+        $opponentFlipTargets = $battle->isPvp() ? $this->abilityResolver->effectiveFlipTargets($opponentChoice) : null;
+
+        $result = $this->combatResolver->resolveRound($playerThrows, $opponentThrows, $characterFlipTargets, $opponentFlipTargets);
+        $result = $this->abilityResolver->applyPostDamage($result, $characterChoice, $opponentChoice, $characterActionCount, $opponentActionCount);
 
         $character = $battle->getCharacter();
         $character->setHp($character->getHp() - $result->damageToPlayer);

@@ -110,15 +110,18 @@ class Battle
     private ?array $pendingOpponentThrows = null;
 
     /**
-     * PvP-only: each side's submitted action targets for the current round,
-     * stored independently until both are present (see BattleService::submitActions()).
+     * PvP-only: each side's submitted ability choice for the current round
+     * (AbilityChoice::toArray() shape — which ability, and targets if it's
+     * Flip), stored independently until both are present. See
+     * BattleService::submitActions(). Column name predates abilities (it
+     * only stored flip target indices then) — kept to avoid a migration.
      *
-     * @var int[]|null
+     * @var array{ability: string, targets: int[]}|null
      */
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $pendingCharacterActionTargets = null;
 
-    /** @var int[]|null */
+    /** @var array{ability: string, targets: int[]}|null */
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $pendingOpponentActionTargets = null;
 
@@ -334,34 +337,40 @@ class Battle
         return $this;
     }
 
-    public function getPendingCharacterActionTargets(): ?array
+    /**
+     * @return array{ability: string, targets: int[]}|null AbilityChoice::toArray()/fromArray() shape
+     */
+    public function getPendingCharacterAbilityChoice(): ?array
     {
         return $this->pendingCharacterActionTargets;
     }
 
-    public function getPendingOpponentActionTargets(): ?array
+    /**
+     * @return array{ability: string, targets: int[]}|null
+     */
+    public function getPendingOpponentAbilityChoice(): ?array
     {
         return $this->pendingOpponentActionTargets;
     }
 
     /**
-     * @param int[] $targets
+     * @param array{ability: string, targets: int[]} $choice AbilityChoice::toArray()
      */
-    public function submitActionTargets(bool $asOpponentSide, array $targets): void
+    public function submitAbilityChoice(bool $asOpponentSide, array $choice): void
     {
         if ($asOpponentSide) {
-            $this->pendingOpponentActionTargets = $targets;
+            $this->pendingOpponentActionTargets = $choice;
         } else {
-            $this->pendingCharacterActionTargets = $targets;
+            $this->pendingCharacterActionTargets = $choice;
         }
     }
 
-    public function bothActionTargetsSubmitted(): bool
+    public function bothAbilityChoicesSubmitted(): bool
     {
         return null !== $this->pendingCharacterActionTargets && null !== $this->pendingOpponentActionTargets;
     }
 
-    public function clearPendingActionTargets(): void
+    public function clearPendingAbilityChoices(): void
     {
         $this->pendingCharacterActionTargets = null;
         $this->pendingOpponentActionTargets = null;

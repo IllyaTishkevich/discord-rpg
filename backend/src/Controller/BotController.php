@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Battle\AbilityChoice;
 use App\Entity\Battle;
 use App\Enum\BattleStatus;
 use App\Exception\BattleAlreadyFinishedException;
@@ -173,7 +174,7 @@ class BotController extends AbstractBotController
             $battleService->throwRound($battle);
 
             try {
-                $battleService->resolveRound($battle, []);
+                $battleService->resolveRound($battle, AbilityChoice::flip());
             } catch (BattleAlreadyFinishedException) {
                 break;
             }

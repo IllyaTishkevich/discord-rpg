@@ -2,10 +2,13 @@
 
 namespace App\Controller;
 
+use App\Battle\AbilityChoice;
 use App\Entity\Battle;
 use App\Entity\Character;
 use App\Entity\User;
+use App\Enum\AbilityType;
 use App\Exception\BattleAlreadyFinishedException;
+use App\Exception\InsufficientActionPointsException;
 use App\Exception\InsufficientEnergyException;
 use App\Exception\InvalidBattleStateException;
 use App\Exception\NoPendingThrowException;
@@ -135,15 +138,17 @@ class BattleController extends AbstractApiController
     {
         $this->requireParticipantSide($battle);
 
-        $actionTargets = $this->decodeJson($request)['actionTargets'] ?? [];
-        if (!\is_array($actionTargets)) {
-            return $this->json(['error' => '"actionTargets" must be an array of indices.'], 400);
+        $choice = $this->decodeAbilityChoice($request);
+        if (null === $choice) {
+            return $this->json(['error' => 'Invalid "ability" — must be one of: '.implode(', ', array_column(AbilityType::cases(), 'value'))], 400);
         }
 
         try {
-            $round = $battleService->resolveRound($battle, array_map('intval', $actionTargets));
+            $round = $battleService->resolveRound($battle, $choice);
         } catch (NoPendingThrowException) {
             return $this->json(['error' => 'Call /throw before /resolve.'], 409);
+        } catch (InsufficientActionPointsException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
         } catch (InvalidBattleStateException $e) {
             return $this->json(['error' => $e->getMessage()], 409);
         }
@@ -166,15 +171,17 @@ class BattleController extends AbstractApiController
         $viewerIsOpponentSide = $this->requireParticipantSide($battle);
         $viewerCharacter = $viewerIsOpponentSide ? $battle->getOpponentCharacter() : $battle->getCharacter();
 
-        $actionTargets = $this->decodeJson($request)['actionTargets'] ?? [];
-        if (!\is_array($actionTargets)) {
-            return $this->json(['error' => '"actionTargets" must be an array of indices.'], 400);
+        $choice = $this->decodeAbilityChoice($request);
+        if (null === $choice) {
+            return $this->json(['error' => 'Invalid "ability" — must be one of: '.implode(', ', array_column(AbilityType::cases(), 'value'))], 400);
         }
 
         try {
-            $round = $battleService->submitActions($battle, $viewerCharacter, array_map('intval', $actionTargets));
+            $round = $battleService->submitActions($battle, $viewerCharacter, $choice);
         } catch (NoPendingThrowException) {
             return $this->json(['error' => 'Call /throw before /submit-actions.'], 409);
+        } catch (InsufficientActionPointsException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
         } catch (InvalidBattleStateException|BattleAlreadyFinishedException $e) {
             return $this->json(['error' => $e->getMessage()], 409);
         }
@@ -207,6 +214,28 @@ class BattleController extends AbstractApiController
         return $this->json($battle->isPvp()
             ? $this->serializer->roundForViewer($latest, $viewerIsOpponentSide)
             : $this->serializer->round($latest));
+    }
+
+    /**
+     * @return AbilityChoice|null null if "ability" was present but not a
+     *                            recognized AbilityType value (400 case);
+     *                            omitted entirely defaults to Flip
+     */
+    private function decodeAbilityChoice(Request $request): ?AbilityChoice
+    {
+        $body = $this->decodeJson($request);
+
+        $abilityValue = $body['ability'] ?? AbilityType::Flip->value;
+        if (!\is_string($abilityValue) || null === ($ability = AbilityType::tryFrom($abilityValue))) {
+            return null;
+        }
+
+        $targets = $body['targets'] ?? $body['actionTargets'] ?? [];
+        if (!\is_array($targets)) {
+            $targets = [];
+        }
+
+        return new AbilityChoice($ability, array_map('intval', $targets));
     }
 
     private function requireCharacter(): Character
