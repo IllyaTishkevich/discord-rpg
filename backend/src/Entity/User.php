@@ -18,8 +18,11 @@ class User implements UserInterface
     #[ORM\Column(length: 32, unique: true)]
     private string $discordId;
 
+    // Named displayName (not "username") so it can't collide with Symfony's
+    // legacy getUsername()/PropertyAccessor("username") identity lookup —
+    // getUserIdentifier() below is the only identity accessor.
     #[ORM\Column(length: 64)]
-    private string $username;
+    private string $displayName;
 
     #[ORM\Column(length: 64, nullable: true)]
     private ?string $avatar = null;
@@ -30,10 +33,10 @@ class User implements UserInterface
     #[ORM\OneToOne(mappedBy: 'user', targetEntity: Character::class, cascade: ['persist', 'remove'])]
     private ?Character $character = null;
 
-    public function __construct(string $discordId, string $username, ?string $avatar = null)
+    public function __construct(string $discordId, string $displayName, ?string $avatar = null)
     {
         $this->discordId = $discordId;
-        $this->username = $username;
+        $this->displayName = $displayName;
         $this->avatar = $avatar;
         $this->createdAt = new \DateTimeImmutable();
     }
@@ -48,14 +51,14 @@ class User implements UserInterface
         return $this->discordId;
     }
 
-    public function getUsername(): string
+    public function getDisplayName(): string
     {
-        return $this->username;
+        return $this->displayName;
     }
 
-    public function setUsername(string $username): static
+    public function setDisplayName(string $displayName): static
     {
-        $this->username = $username;
+        $this->displayName = $displayName;
 
         return $this;
     }

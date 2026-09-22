@@ -2,8 +2,11 @@
 
 namespace App\Controller;
 
+use App\Entity\Bit;
 use App\Entity\Character;
 use App\Entity\User;
+use App\Enum\BitFace;
+use App\Repository\BitRepository;
 use App\Repository\CharacterClassRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -34,15 +37,22 @@ class CharacterController extends AbstractApiController
 
         $character = new Character($user, $characterClass);
         $user->setCharacter($character);
-
         $entityManager->persist($character);
+
+        $bits = [];
+        foreach ($characterClass->getStarterBits() as $starterBit) {
+            $bit = new Bit($character, BitFace::from($starterBit['faceA']), BitFace::from($starterBit['faceB']));
+            $entityManager->persist($bit);
+            $bits[] = $bit;
+        }
+
         $entityManager->flush();
 
-        return $this->json($this->serializeCharacter($character), 201);
+        return $this->json($this->serializeCharacter($character, $bits), 201);
     }
 
     #[Route('/me', name: 'character_me', methods: ['GET'])]
-    public function me(): JsonResponse
+    public function me(BitRepository $bitRepository): JsonResponse
     {
         /** @var User $user */
         $user = $this->getUser();
@@ -52,10 +62,13 @@ class CharacterController extends AbstractApiController
             return $this->json(['error' => 'No character for this user yet.'], 404);
         }
 
-        return $this->json($this->serializeCharacter($character));
+        return $this->json($this->serializeCharacter($character, $bitRepository->findByCharacter($character)));
     }
 
-    private function serializeCharacter(Character $character): array
+    /**
+     * @param Bit[] $bits
+     */
+    private function serializeCharacter(Character $character, array $bits = []): array
     {
         return [
             'id' => $character->getId(),
@@ -70,6 +83,10 @@ class CharacterController extends AbstractApiController
             'level' => $character->getLevel(),
             'xp' => $character->getXp(),
             'coins' => $character->getCoins(),
+            'bits' => array_map(
+                static fn (Bit $bit) => ['faceA' => $bit->getFaceA()->value, 'faceB' => $bit->getFaceB()->value],
+                $bits,
+            ),
         ];
     }
 }

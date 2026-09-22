@@ -34,7 +34,7 @@ class AuthController extends AbstractApiController
             $user = new User($profile['id'], $profile['username'], $profile['avatar']);
             $entityManager->persist($user);
         } else {
-            $user->setUsername($profile['username']);
+            $user->setDisplayName($profile['username']);
             $user->setAvatar($profile['avatar']);
         }
         $entityManager->flush();
@@ -44,7 +44,7 @@ class AuthController extends AbstractApiController
             'user' => [
                 'id' => $user->getId(),
                 'discordId' => $user->getDiscordId(),
-                'username' => $user->getUsername(),
+                'username' => $user->getDisplayName(),
                 'avatar' => $user->getAvatar(),
                 'hasCharacter' => null !== $user->getCharacter(),
             ],
