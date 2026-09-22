@@ -31,6 +31,23 @@ type LoadState =
   | { status: "battle-result"; character: Character; battle: BattleState }
   | { status: "error"; message: string };
 
+// Discord SDK RPC rejections (discordSdk.commands.*) are typically plain
+// {code, message} objects, not real Error instances — without this, they
+// all collapsed into an unhelpful "Unknown error" on screen. The full
+// object is still logged via console.error at the call site for debugging.
+function describeError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err) {
+    const code = "code" in err ? ` (code ${(err as { code: unknown }).code})` : "";
+    return `${String((err as { message: unknown }).message)}${code}`;
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 function App() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
@@ -70,7 +87,8 @@ function App() {
         if (err instanceof ApiError && err.status === 404) {
           setState({ status: "no-character" });
         } else {
-          setState({ status: "error", message: err instanceof Error ? err.message : "Unknown error" });
+          console.error("Activity init failed:", err);
+          setState({ status: "error", message: describeError(err) });
         }
       });
   }, []);
