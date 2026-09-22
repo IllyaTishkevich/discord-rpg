@@ -1,0 +1,40 @@
+.profile {
+  padding: 24px;
+  color: #fff;
+}
+
+.profile__level {
+  opacity: 0.7;
+  margin-top: -8px;
+}
+
+.stat-bar {
+  margin: 16px 0;
+}
+
+.stat-bar__label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.stat-bar__track {
+  background: #1e1f22;
+  border-radius: 6px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.stat-bar__fill {
+  background: #23a55a;
+  height: 100%;
+}
+
+.profile__row {
+  display: flex;
+  gap: 24px;
+  margin-top: 16px;
+  font-size: 14px;
+  opacity: 0.85;
+}

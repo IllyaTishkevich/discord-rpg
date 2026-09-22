@@ -1,0 +1,53 @@
+.class-select {
+  padding: 24px;
+  color: #fff;
+}
+
+.class-select__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.class-select__card {
+  background: #2b2d31;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: left;
+  color: #fff;
+  cursor: pointer;
+}
+
+.class-select__card--active {
+  border-color: #5865f2;
+}
+
+.class-select__card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 8px;
+  margin: 8px 0 0;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.class-select__confirm {
+  background: #5865f2;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.class-select__confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.class-select__error {
+  color: #f23f42;
+}
