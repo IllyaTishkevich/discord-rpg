@@ -79,6 +79,8 @@ sudo apt install -y php8.2-fpm php8.2-cli php8.2-pgsql php8.2-intl \
     php8.2-opcache php8.2-mbstring php8.2-xml php8.2-curl
 ```
 
+> Проверьте, какая версия реально установилась: `php -v`. Если PPA не добавился (или вы намеренно его пропустили) — встанет системная 8.1, это тоже нормально. **Во всех шагах ниже (`B.6`–`B.13`) замените `8.2` на свою фактическую версию** — путь `/etc/php/8.2/fpm/...`, имя сервиса `php8.2-fpm`.
+
 **Composer**:
 
 ```bash
@@ -223,7 +225,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name discord-rpg.example.com;
 
     ssl_certificate     /etc/letsencrypt/live/discord-rpg.example.com/fullchain.pem;
@@ -233,14 +236,26 @@ server {
     location ~ ^/(api|admin)(/|$) {
         root /opt/discord-rpg/backend/public;
         try_files $uri /index.php$is_args$args;
+    }
 
-        location ~ ^/(api|admin).*\.php(/|$) {
-            fastcgi_pass unix:/run/php/discord-rpg.sock;
-            fastcgi_split_path_info ^(.+\.php)(/.*)$;
-            include fastcgi_params;
-            fastcgi_param SCRIPT_FILENAME /opt/discord-rpg/backend/public/index.php;
-            fastcgi_param DOCUMENT_ROOT /opt/discord-rpg/backend/public;
-        }
+    # Единственная точка входа Symfony. Обязательно БЕЗ префикса api|admin в
+    # regex — try_files выше подставляет буквально "/index.php", и nginx
+    # делает *внутренний редирект* на этот новый URI, заново разыскивая
+    # location по всей конфигурации с нуля (а не только среди вложенных
+    # блоков). Если здесь оставить `^/(api|admin).*\.php(/|$)`, "/index.php"
+    # этому регексу не соответствует (префикс потерян) — запрос провалится
+    # в `location /` и всегда будет отдавать статику Activity вместо PHP.
+    # Оригинальный путь (/admin, /api/...) при этом не теряется — Symfony
+    # получает его через $_SERVER['REQUEST_URI'], который nginx передаёт
+    # неизменным вне зависимости от внутреннего редиректа.
+    location ~ ^/index\.php(/|$) {
+        root /opt/discord-rpg/backend/public;
+        internal;
+        fastcgi_split_path_info ^(.+\.php)(/.*)$;
+        fastcgi_pass unix:/run/php/discord-rpg.sock;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param DOCUMENT_ROOT $document_root;
     }
 
     # статика Activity (собранный React, см. B.9)
@@ -258,6 +273,8 @@ sudo systemctl reload nginx
 ```
 
 `certbot` ставит systemd-таймер (`certbot.timer`) для автопродления автоматически — отдельно настраивать не нужно, но стоит один раз проверить `sudo certbot renew --dry-run`.
+
+> Проверка после настройки: `curl -I https://discord-rpg.example.com/admin` не должен содержать заголовки `etag`/`last-modified` (они появляются только когда nginx отдаёт статический файл напрямую) — если они есть, запрос не доходит до PHP-FPM, и `location /` перехватывает всё вместо `/admin`/`/api`.
 
 ### B.9. Собрать и задеплоить Activity
 
