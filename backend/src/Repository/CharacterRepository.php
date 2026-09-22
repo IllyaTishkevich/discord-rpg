@@ -15,4 +15,16 @@ class CharacterRepository extends ServiceEntityRepository
     {
         parent::__construct($registry, Character::class);
     }
+
+    /**
+     * @return Character[]
+     */
+    public function findTopByXp(int $limit): array
+    {
+        return $this->createQueryBuilder('c')
+            ->orderBy('c.xp', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
 }

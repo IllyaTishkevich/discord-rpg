@@ -28,6 +28,7 @@ security:
         - { path: ^/api/auth, roles: PUBLIC_ACCESS }
         - { path: ^/api/bot, roles: PUBLIC_ACCESS }
         - { path: ^/api/equipment$, methods: [GET], roles: PUBLIC_ACCESS }
+        - { path: ^/api/characters/leaderboard$, methods: [GET], roles: PUBLIC_ACCESS }
         - { path: ^/api/tournaments/(open|latest)$, methods: [GET], roles: PUBLIC_ACCESS }
         - { path: ^/api/tournaments/\d+$, methods: [GET], roles: PUBLIC_ACCESS }
         - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }

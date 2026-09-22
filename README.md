@@ -5,29 +5,53 @@ RPG-бот для Discord с боевой системой на "битах" (д
 ## Архитектура
 
 - **backend/** — Symfony API. Источник истины: пользователи, персонажи, классы, биты, снаряжение, HP/энергия, бои, турниры, недельные задания, ивенты.
-- **activity/** — React-приложение, открывается как Discord Activity (iframe в голосовом канале через Embedded App SDK). Визуализация боя, магазин, инвентарь.
-- **bot/** — Discord bot (Node.js / discord.js). Регистрирует Activity, slash-команды, рассылка ивентов (например, нападение монстров).
+- **activity/** — React-приложение, открывается как Discord Activity (iframe в голосовом канале через Embedded App SDK). Арена боя, магазин, инвентарь, турнир, недельные задания.
+- **bot/** — Discord bot (Node.js / discord.js). Запуск Activity, slash-команды (`/profile`, `/pve`, `/shop`, `/duel`, `/event-start`, `/event-fight`, `/tournament`, `/quest`, `/leaderboard`), рассылка ивентов.
 
 ## Ключевые решения
 
-- Синхронизация боя: **API-поллинг + оптимистичный UI** на React (не WebSocket) — дешевле в разработке и хостинге.
-- Discord Activity требует HTTPS-домен (прод) или туннель (Discord Developer Tunnel / ngrok) в разработке.
-- Авторизация в Activity — через Discord OAuth2 (Embedded App SDK выдаёт токен пользователя).
+- Синхронизация боя: **API-поллинг + оптимистичный UI** на React (не WebSocket) — дешевле в разработке и хостинге. Раунд боя разбит на `/throw` и `/resolve`, чтобы игрок видел свой бросок до выбора цели для "действия".
+- Discord Activity требует HTTPS-домен (прод) или туннель (Discord Developer Tunnel / ngrok) в разработке; фронт обращается к бэкенду через `/.proxy/` при запуске внутри Discord.
+- Авторизация в Activity — через Discord OAuth2 (Embedded App SDK: `authorize` → бэкенд обменивает код на токен → своя JWT-сессия).
+- Bot ↔ backend — отдельный контур авторизации через общий секрет (`X-Bot-Secret`), а не пользовательский JWT: бот действует от имени игрока по его `discordId`, не имея его токена.
+- PvP пока не реализован как живой синхронный бой: `/duel` — это приглашение/подтверждение, а турнирные матчи симулируются сервером по статам обоих персонажей (см. `TournamentService`).
 
-## Черновик модели данных
+## Модель данных
 
 ```
-User
- └─ Character (class, hp, energy)
-     ├─ Bits[]        — 2 стороны: удар / защита / действие
-     ├─ Equipment[]   — модификаторы бит / HP, покупается за монеты
-     └─ Battle[]       — лог раундов боя (PvP или PvE против бота)
+User (discordId, displayName, avatar)
+ └─ Character (class, hp/maxHp, energy/maxEnergy, level, xp, coins)
+     ├─ Bit[]                    — 2 стороны: attack / defense / action
+     ├─ CharacterEquipment[]     — история покупок в магазине
+     ├─ Battle[]                 — PvE / event-бои (throw → resolve, лог раундов)
+     ├─ TournamentEntry[]
+     └─ CharacterQuestProgress[]
 
-Tournament
-WeeklyQuest
-Event            — периодические ивенты (например, нападение монстров на всех онлайн-игроков)
+CharacterClass    — справочник классов со стартовым набором бит
+Equipment         — каталог магазина (даёт биту или +HP)
+Event             — периодический ивент ("нападение монстров")
+Tournament / TournamentEntry / TournamentMatch  — сетка на выбывание
+WeeklyQuest       — одно задание в неделю (win_battles)
 ```
+
+## Быстрый старт (локально)
+
+```bash
+docker compose up -d
+docker compose run --rm backend php bin/console doctrine:migrations:migrate --no-interaction
+docker compose run --rm backend php bin/console app:seed-character-classes
+docker compose run --rm backend php bin/console app:seed-equipment
+docker compose run --rm backend php bin/console app:weekly-quests:generate
+```
+
+Backend доступен на `http://localhost:8000`. Для Activity: `cd activity && npm run dev`. Для бота: `cd bot && npm run deploy-commands && npm start` (нужны `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID` в `bot/.env`).
 
 ## Статус
 
-Проект в стадии scaffolding.
+Реализованы Sprint 0–7 из `docs/ROADMAP.md` (инфраструктура, аккаунты, боевое ядро, Activity-визуализация, бот, магазин, ивенты, турниры и задания) плюс `/leaderboard`. Не сделано и требует действий за пределами кода:
+
+- **Регистрация приложения в Discord Developer Portal** — нужны реальные `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` и настройка Activity/URL Mappings, чтобы вообще запустить Activity внутри Discord и проверить OAuth-флоу живьём.
+- **HTTPS-туннель для разработки** (Developer Tunnel/ngrok) — тоже требует аккаунта/настройки, не подставишь программно.
+- **Баланс классов/снаряжения/монстров** — числа сейчас плейсхолдеры для сквозного тестирования API, реальная балансировка — по `docs/ROADMAP.md` (Game Design backlog), после живого плейтеста.
+- **Мониторинг/алерты для прода** — нужен выбор провайдера (Sentry и т.п.) и его учётные данные.
+- **Живой PvP** — не реализован; `/duel` только приглашает и подтверждает пару, реальные бои между двумя игроками потребуют отдельного протокола синхронизации (кандидат — расширить схему throw/resolve на двух реальных игроков вместо игрок-vs-бот).

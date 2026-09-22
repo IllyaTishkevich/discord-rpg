@@ -8,6 +8,7 @@ use App\Entity\User;
 use App\Enum\BitFace;
 use App\Repository\BitRepository;
 use App\Repository\CharacterClassRepository;
+use App\Repository\CharacterRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -49,6 +50,22 @@ class CharacterController extends AbstractApiController
         $entityManager->flush();
 
         return $this->json($this->serializeCharacter($character, $bits), 201);
+    }
+
+    #[Route('/leaderboard', name: 'character_leaderboard', methods: ['GET'])]
+    public function leaderboard(CharacterRepository $characterRepository): JsonResponse
+    {
+        $top = array_map(
+            static fn (Character $character) => [
+                'displayName' => $character->getUser()->getDisplayName(),
+                'className' => $character->getCharacterClass()->getName(),
+                'level' => $character->getLevel(),
+                'xp' => $character->getXp(),
+            ],
+            $characterRepository->findTopByXp(10),
+        );
+
+        return $this->json($top);
     }
 
     #[Route('/me', name: 'character_me', methods: ['GET'])]
