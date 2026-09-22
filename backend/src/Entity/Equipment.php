@@ -62,9 +62,23 @@ class Equipment
         return $this->code;
     }
 
+    public function setCode(string $code): static
+    {
+        $this->code = $code;
+
+        return $this;
+    }
+
     public function getName(): string
     {
         return $this->name;
+    }
+
+    public function setName(string $name): static
+    {
+        $this->name = $name;
+
+        return $this;
     }
 
     public function getDescription(): ?string
@@ -84,9 +98,23 @@ class Equipment
         return $this->price;
     }
 
+    public function setPrice(int $price): static
+    {
+        $this->price = $price;
+
+        return $this;
+    }
+
     public function getEffectType(): EquipmentEffectType
     {
         return $this->effectType;
+    }
+
+    public function setEffectType(EquipmentEffectType $effectType): static
+    {
+        $this->effectType = $effectType;
+
+        return $this;
     }
 
     public function getBitFaceA(): ?BitFace
@@ -94,9 +122,23 @@ class Equipment
         return $this->bitFaceA;
     }
 
+    public function setBitFaceA(?BitFace $bitFaceA): static
+    {
+        $this->bitFaceA = $bitFaceA;
+
+        return $this;
+    }
+
     public function getBitFaceB(): ?BitFace
     {
         return $this->bitFaceB;
+    }
+
+    public function setBitFaceB(?BitFace $bitFaceB): static
+    {
+        $this->bitFaceB = $bitFaceB;
+
+        return $this;
     }
 
     public function setBitFaces(BitFace $faceA, BitFace $faceB): static
@@ -112,7 +154,7 @@ class Equipment
         return $this->hpBonus;
     }
 
-    public function setHpBonus(int $hpBonus): static
+    public function setHpBonus(?int $hpBonus): static
     {
         $this->hpBonus = $hpBonus;
 

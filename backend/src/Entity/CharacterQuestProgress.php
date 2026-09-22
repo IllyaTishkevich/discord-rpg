@@ -60,6 +60,17 @@ class CharacterQuestProgress
         return $this;
     }
 
+    /**
+     * For admin corrections (e.g. support requests) — game logic should use
+     * incrementProgress().
+     */
+    public function setProgress(int $progress): static
+    {
+        $this->progress = $progress;
+
+        return $this;
+    }
+
     public function isComplete(): bool
     {
         return $this->progress >= $this->quest->getTargetValue();
@@ -68,6 +79,13 @@ class CharacterQuestProgress
     public function getClaimedAt(): ?\DateTimeImmutable
     {
         return $this->claimedAt;
+    }
+
+    public function setClaimedAt(?\DateTimeImmutable $claimedAt): static
+    {
+        $this->claimedAt = $claimedAt;
+
+        return $this;
     }
 
     public function isClaimed(): bool

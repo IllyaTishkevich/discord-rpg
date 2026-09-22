@@ -63,14 +63,35 @@ class Event
         return $this->monsterName;
     }
 
+    public function setMonsterName(string $monsterName): static
+    {
+        $this->monsterName = $monsterName;
+
+        return $this;
+    }
+
     public function getMonsterHp(): int
     {
         return $this->monsterHp;
     }
 
+    public function setMonsterHp(int $monsterHp): static
+    {
+        $this->monsterHp = $monsterHp;
+
+        return $this;
+    }
+
     public function getStatus(): EventStatus
     {
         return $this->status;
+    }
+
+    public function setStatus(EventStatus $status): static
+    {
+        $this->status = $status;
+
+        return $this;
     }
 
     public function end(): static
@@ -88,6 +109,13 @@ class Event
     public function getEndsAt(): \DateTimeImmutable
     {
         return $this->endsAt;
+    }
+
+    public function setEndsAt(\DateTimeImmutable $endsAt): static
+    {
+        $this->endsAt = $endsAt;
+
+        return $this;
     }
 
     public function isActiveNow(): bool

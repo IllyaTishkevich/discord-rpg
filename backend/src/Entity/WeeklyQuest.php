@@ -61,13 +61,34 @@ class WeeklyQuest
         return $this->targetValue;
     }
 
+    public function setTargetValue(int $targetValue): static
+    {
+        $this->targetValue = $targetValue;
+
+        return $this;
+    }
+
     public function getRewardXp(): int
     {
         return $this->rewardXp;
     }
 
+    public function setRewardXp(int $rewardXp): static
+    {
+        $this->rewardXp = $rewardXp;
+
+        return $this;
+    }
+
     public function getRewardCoins(): int
     {
         return $this->rewardCoins;
+    }
+
+    public function setRewardCoins(int $rewardCoins): static
+    {
+        $this->rewardCoins = $rewardCoins;
+
+        return $this;
     }
 }

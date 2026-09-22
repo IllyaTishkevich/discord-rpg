@@ -50,9 +50,30 @@ class Bit
         return $this->faceA;
     }
 
+    public function setFaceA(BitFace $faceA): static
+    {
+        $this->faceA = $faceA;
+
+        return $this;
+    }
+
     public function getFaceB(): BitFace
     {
         return $this->faceB;
+    }
+
+    public function setFaceB(BitFace $faceB): static
+    {
+        $this->faceB = $faceB;
+
+        return $this;
+    }
+
+    public function setCharacter(Character $character): static
+    {
+        $this->character = $character;
+
+        return $this;
     }
 
     /**

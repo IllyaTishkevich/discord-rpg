@@ -100,6 +100,17 @@ class Character
         return $this;
     }
 
+    /**
+     * Direct override, unlike increaseMaxHp() — for admin corrections only,
+     * game logic should use increaseMaxHp().
+     */
+    public function setMaxHp(int $maxHp): static
+    {
+        $this->maxHp = $maxHp;
+
+        return $this;
+    }
+
     public function getEnergy(): int
     {
         return $this->energy;
@@ -117,9 +128,23 @@ class Character
         return $this->maxEnergy;
     }
 
+    public function setMaxEnergy(int $maxEnergy): static
+    {
+        $this->maxEnergy = $maxEnergy;
+
+        return $this;
+    }
+
     public function getLevel(): int
     {
         return $this->level;
+    }
+
+    public function setLevel(int $level): static
+    {
+        $this->level = $level;
+
+        return $this;
     }
 
     public function getXp(): int
@@ -134,6 +159,16 @@ class Character
         return $this;
     }
 
+    /**
+     * For admin corrections only — game logic should use addXp().
+     */
+    public function setXp(int $xp): static
+    {
+        $this->xp = $xp;
+
+        return $this;
+    }
+
     public function getCoins(): int
     {
         return $this->coins;
@@ -142,6 +177,16 @@ class Character
     public function addCoins(int $amount): static
     {
         $this->coins += $amount;
+
+        return $this;
+    }
+
+    /**
+     * For admin corrections only — game logic should use addCoins()/trySpendCoins().
+     */
+    public function setCoins(int $coins): static
+    {
+        $this->coins = $coins;
 
         return $this;
     }
@@ -160,5 +205,14 @@ class Character
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    /**
+     * Used by the admin panel's association dropdowns/labels (EasyAdmin
+     * needs entities to be stringable to render them as choices).
+     */
+    public function __toString(): string
+    {
+        return sprintf('%s (%s)', $this->user->getDisplayName(), $this->characterClass->getName());
     }
 }

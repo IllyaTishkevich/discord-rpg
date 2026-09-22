@@ -64,9 +64,23 @@ class CharacterClass
         return $this->code;
     }
 
+    public function setCode(string $code): static
+    {
+        $this->code = $code;
+
+        return $this;
+    }
+
     public function getName(): string
     {
         return $this->name;
+    }
+
+    public function setName(string $name): static
+    {
+        $this->name = $name;
+
+        return $this;
     }
 
     public function getDescription(): ?string
@@ -86,13 +100,42 @@ class CharacterClass
         return $this->baseHp;
     }
 
+    public function setBaseHp(int $baseHp): static
+    {
+        $this->baseHp = $baseHp;
+
+        return $this;
+    }
+
     public function getBaseEnergy(): int
     {
         return $this->baseEnergy;
     }
 
+    public function setBaseEnergy(int $baseEnergy): static
+    {
+        $this->baseEnergy = $baseEnergy;
+
+        return $this;
+    }
+
     public function getStarterBits(): array
     {
         return $this->starterBits;
+    }
+
+    /**
+     * Read-only, pre-formatted for the admin panel — EasyAdmin's TextField
+     * requires a stringable property value, and it checks the raw value's
+     * type before any formatValue() callback runs, so a plain array (even
+     * with formatValue configured) throws. See docs/ROADMAP.md if this ever
+     * needs to become editable — it currently doesn't have a setter.
+     */
+    public function getStarterBitsSummary(): string
+    {
+        return implode(', ', array_map(
+            static fn (array $bit) => sprintf('%s/%s', $bit['faceA'], $bit['faceB']),
+            $this->starterBits,
+        ));
     }
 }
