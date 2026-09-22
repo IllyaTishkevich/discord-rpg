@@ -18,6 +18,7 @@ use App\Controller\Admin\TournamentMatchCrudController;
 use App\Controller\Admin\UserCrudController;
 use App\Controller\Admin\WeeklyQuestCrudController;
 use App\Entity\Admin;
+use App\Entity\Bit;
 use App\Entity\Character;
 use App\Entity\CharacterClass;
 use App\Entity\Equipment;
@@ -169,10 +170,12 @@ class AdminPanelTest extends WebTestCase
 
         $class = $em->getRepository(CharacterClass::class)->findOneBy(['code' => 'test_fixture_class']);
         if (null === $class) {
-            $class = new CharacterClass('test_fixture_class', 'Fixture Class', 20, 10, [
-                ['faceA' => BitFace::Attack->value, 'faceB' => BitFace::Defense->value],
-            ]);
+            $class = new CharacterClass('test_fixture_class', 'Fixture Class', 20, 10);
             $em->persist($class);
+
+            $templateBit = new Bit(null, BitFace::Attack, BitFace::Defense);
+            $em->persist($templateBit);
+            $class->addStarterBit($templateBit);
         }
 
         $user = new User('test-fixture-discord-id', 'Fixture Player');

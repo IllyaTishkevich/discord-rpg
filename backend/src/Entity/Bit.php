@@ -4,11 +4,22 @@ namespace App\Entity;
 
 use App\Enum\BitFace;
 use App\Repository\BitRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * A two-sided coin owned by a character. Thrown during battle rounds to
- * randomly reveal one of its two faces.
+ * A two-sided coin. Thrown during battle rounds to randomly reveal one of
+ * its two faces.
+ *
+ * Either owned by a single `character` (a concrete bit in that character's
+ * loadout — `character` set, `characterClasses` empty), or a reusable
+ * **template** assignable to any number of character classes as their
+ * starter loadout (`character` null, `characterClasses` non-empty) — never
+ * both at once. Character creation copies each of the class's template
+ * bits into a fresh owned Bit for the new character (see
+ * CharacterController::create()); editing a template afterwards doesn't
+ * retroactively change already-created characters.
  */
 #[ORM\Entity(repositoryClass: BitRepository::class)]
 class Bit
@@ -19,8 +30,8 @@ class Bit
     private ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Character::class)]
-    #[ORM\JoinColumn(nullable: false)]
-    private Character $character;
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Character $character;
 
     #[ORM\Column(enumType: BitFace::class)]
     private BitFace $faceA;
@@ -40,13 +51,25 @@ class Bit
     #[ORM\Column]
     private bool $advantageB;
 
-    public function __construct(Character $character, BitFace $faceA, BitFace $faceB, bool $advantageA = false, bool $advantageB = false)
+    /**
+     * Classes that use this bit as part of their starter loadout — only
+     * meaningful for template bits (character === null). Owning side of
+     * the relation; CharacterClass::$starterBits is the inverse side.
+     *
+     * @var Collection<int, CharacterClass>
+     */
+    #[ORM\ManyToMany(targetEntity: CharacterClass::class, inversedBy: 'starterBits')]
+    #[ORM\JoinTable(name: 'character_class_bit')]
+    private Collection $characterClasses;
+
+    public function __construct(?Character $character, BitFace $faceA, BitFace $faceB, bool $advantageA = false, bool $advantageB = false)
     {
         $this->character = $character;
         $this->faceA = $faceA;
         $this->faceB = $faceB;
         $this->advantageA = $advantageA;
         $this->advantageB = $advantageB;
+        $this->characterClasses = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -54,9 +77,16 @@ class Bit
         return $this->id;
     }
 
-    public function getCharacter(): Character
+    public function getCharacter(): ?Character
     {
         return $this->character;
+    }
+
+    public function setCharacter(?Character $character): static
+    {
+        $this->character = $character;
+
+        return $this;
     }
 
     public function getFaceA(): BitFace
@@ -107,9 +137,29 @@ class Bit
         return $this;
     }
 
-    public function setCharacter(Character $character): static
+    /**
+     * @return Collection<int, CharacterClass>
+     */
+    public function getCharacterClasses(): Collection
     {
-        $this->character = $character;
+        return $this->characterClasses;
+    }
+
+    public function addCharacterClass(CharacterClass $characterClass): static
+    {
+        if (!$this->characterClasses->contains($characterClass)) {
+            $this->characterClasses->add($characterClass);
+            $characterClass->addStarterBit($this);
+        }
+
+        return $this;
+    }
+
+    public function removeCharacterClass(CharacterClass $characterClass): static
+    {
+        if ($this->characterClasses->removeElement($characterClass)) {
+            $characterClass->removeStarterBit($this);
+        }
 
         return $this;
     }
@@ -126,5 +176,10 @@ class Bit
     public function throwRandomFace(): BitFace
     {
         return random_int(0, 1) === 0 ? $this->faceA : $this->faceB;
+    }
+
+    public function __toString(): string
+    {
+        return sprintf('#%d %s/%s', $this->id ?? 0, $this->faceA->value, $this->faceB->value);
     }
 }

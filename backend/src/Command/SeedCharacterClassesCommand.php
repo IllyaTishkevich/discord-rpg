@@ -2,7 +2,9 @@
 
 namespace App\Command;
 
+use App\Entity\Bit;
 use App\Entity\CharacterClass;
+use App\Enum\BitFace;
 use App\Repository\CharacterClassRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -80,9 +82,21 @@ class SeedCharacterClassesCommand extends Command
                 $definition['name'],
                 $definition['baseHp'],
                 $definition['baseEnergy'],
-                $definition['starterBits'],
             );
             $this->entityManager->persist($characterClass);
+
+            foreach ($definition['starterBits'] as $bitDefinition) {
+                $templateBit = new Bit(
+                    null,
+                    BitFace::from($bitDefinition['faceA']),
+                    BitFace::from($bitDefinition['faceB']),
+                    $bitDefinition['advantageA'] ?? false,
+                    $bitDefinition['advantageB'] ?? false,
+                );
+                $this->entityManager->persist($templateBit);
+                $characterClass->addStarterBit($templateBit);
+            }
+
             $io->writeln(sprintf('Created class "%s".', $definition['code']));
         }
 

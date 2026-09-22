@@ -11,9 +11,11 @@ use Doctrine\ORM\Mapping as ORM;
  * Reference entity describing a playable class: base stats and the starter
  * set of bits every new character of this class receives.
  *
- * `starterBits` is a JSON array of two-sided bit definitions, e.g.
- * [{"faceA": "attack", "faceB": "defense"}, {"faceA": "attack", "faceB": "action"}].
- * Faces are one of: attack, defense, action (matches Sprint 2 Bit entity).
+ * `starterBits` is a many-to-many association to reusable `Bit` template
+ * rows (a template Bit has `character === null` — see Bit's docblock).
+ * Character creation copies each one into a fresh owned Bit for the new
+ * character (CharacterController::create()) — editing this list later
+ * doesn't retroactively change existing characters.
  */
 #[ORM\Entity(repositoryClass: CharacterClassRepository::class)]
 class CharacterClass
@@ -38,19 +40,24 @@ class CharacterClass
     #[ORM\Column]
     private int $baseEnergy;
 
-    #[ORM\Column(type: 'json')]
-    private array $starterBits = [];
+    /**
+     * Inverse side of Bit::$characterClasses.
+     *
+     * @var Collection<int, Bit>
+     */
+    #[ORM\ManyToMany(targetEntity: Bit::class, mappedBy: 'characterClasses')]
+    private Collection $starterBits;
 
     #[ORM\OneToMany(mappedBy: 'characterClass', targetEntity: Character::class)]
     private Collection $characters;
 
-    public function __construct(string $code, string $name, int $baseHp, int $baseEnergy, array $starterBits)
+    public function __construct(string $code, string $name, int $baseHp, int $baseEnergy)
     {
         $this->code = $code;
         $this->name = $name;
         $this->baseHp = $baseHp;
         $this->baseEnergy = $baseEnergy;
-        $this->starterBits = $starterBits;
+        $this->starterBits = new ArrayCollection();
         $this->characters = new ArrayCollection();
     }
 
@@ -119,23 +126,49 @@ class CharacterClass
         return $this;
     }
 
-    public function getStarterBits(): array
+    /**
+     * @return Collection<int, Bit>
+     */
+    public function getStarterBits(): Collection
     {
         return $this->starterBits;
+    }
+
+    public function addStarterBit(Bit $bit): static
+    {
+        if (!$this->starterBits->contains($bit)) {
+            $this->starterBits->add($bit);
+            $bit->addCharacterClass($this);
+        }
+
+        return $this;
+    }
+
+    public function removeStarterBit(Bit $bit): static
+    {
+        if ($this->starterBits->removeElement($bit)) {
+            $bit->removeCharacterClass($this);
+        }
+
+        return $this;
     }
 
     /**
      * Read-only, pre-formatted for the admin panel — EasyAdmin's TextField
      * requires a stringable property value, and it checks the raw value's
-     * type before any formatValue() callback runs, so a plain array (even
-     * with formatValue configured) throws. See docs/ROADMAP.md if this ever
-     * needs to become editable — it currently doesn't have a setter.
+     * type before any formatValue() callback runs, so a plain collection
+     * (even with formatValue configured) throws.
      */
     public function getStarterBitsSummary(): string
     {
         return implode(', ', array_map(
-            static fn (array $bit) => sprintf('%s/%s', $bit['faceA'], $bit['faceB']),
-            $this->starterBits,
+            static fn (Bit $bit) => sprintf('%s/%s', $bit->getFaceA()->value, $bit->getFaceB()->value),
+            $this->starterBits->toArray(),
         ));
+    }
+
+    public function __toString(): string
+    {
+        return $this->name ?: $this->code;
     }
 }

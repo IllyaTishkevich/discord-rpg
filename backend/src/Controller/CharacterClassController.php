@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Entity\Bit;
 use App\Repository\CharacterClassRepository;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
@@ -19,7 +20,15 @@ class CharacterClassController extends AbstractApiController
                 'description' => $class->getDescription(),
                 'baseHp' => $class->getBaseHp(),
                 'baseEnergy' => $class->getBaseEnergy(),
-                'starterBits' => $class->getStarterBits(),
+                'starterBits' => array_map(
+                    static fn (Bit $bit) => [
+                        'faceA' => $bit->getFaceA()->value,
+                        'faceB' => $bit->getFaceB()->value,
+                        'advantageA' => $bit->hasAdvantageA(),
+                        'advantageB' => $bit->hasAdvantageB(),
+                    ],
+                    $class->getStarterBits()->toArray(),
+                ),
             ],
             $characterClassRepository->findAll(),
         );

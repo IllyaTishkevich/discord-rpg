@@ -5,7 +5,6 @@ namespace App\Controller;
 use App\Entity\Bit;
 use App\Entity\Character;
 use App\Entity\User;
-use App\Enum\BitFace;
 use App\Repository\BitRepository;
 use App\Repository\CharacterClassRepository;
 use App\Repository\CharacterRepository;
@@ -41,13 +40,13 @@ class CharacterController extends AbstractApiController
         $entityManager->persist($character);
 
         $bits = [];
-        foreach ($characterClass->getStarterBits() as $starterBit) {
+        foreach ($characterClass->getStarterBits() as $starterBitTemplate) {
             $bit = new Bit(
                 $character,
-                BitFace::from($starterBit['faceA']),
-                BitFace::from($starterBit['faceB']),
-                $starterBit['advantageA'] ?? false,
-                $starterBit['advantageB'] ?? false,
+                $starterBitTemplate->getFaceA(),
+                $starterBitTemplate->getFaceB(),
+                $starterBitTemplate->hasAdvantageA(),
+                $starterBitTemplate->hasAdvantageB(),
             );
             $entityManager->persist($bit);
             $bits[] = $bit;
