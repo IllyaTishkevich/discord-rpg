@@ -41,6 +41,12 @@ class Equipment
     #[ORM\Column(enumType: BitFace::class, nullable: true)]
     private ?BitFace $bitFaceB = null;
 
+    #[ORM\Column]
+    private bool $bitAdvantageA = false;
+
+    #[ORM\Column]
+    private bool $bitAdvantageB = false;
+
     #[ORM\Column(nullable: true)]
     private ?int $hpBonus = null;
 
@@ -141,10 +147,36 @@ class Equipment
         return $this;
     }
 
-    public function setBitFaces(BitFace $faceA, BitFace $faceB): static
+    public function setBitFaces(BitFace $faceA, BitFace $faceB, bool $advantageA = false, bool $advantageB = false): static
     {
         $this->bitFaceA = $faceA;
         $this->bitFaceB = $faceB;
+        $this->bitAdvantageA = $advantageA;
+        $this->bitAdvantageB = $advantageB;
+
+        return $this;
+    }
+
+    public function hasBitAdvantageA(): bool
+    {
+        return $this->bitAdvantageA;
+    }
+
+    public function setBitAdvantageA(bool $bitAdvantageA): static
+    {
+        $this->bitAdvantageA = $bitAdvantageA;
+
+        return $this;
+    }
+
+    public function hasBitAdvantageB(): bool
+    {
+        return $this->bitAdvantageB;
+    }
+
+    public function setBitAdvantageB(bool $bitAdvantageB): static
+    {
+        $this->bitAdvantageB = $bitAdvantageB;
 
         return $this;
     }

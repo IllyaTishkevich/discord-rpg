@@ -19,6 +19,9 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 #[AsCommand(name: 'app:seed-character-classes', description: 'Seed placeholder character classes')]
 class SeedCharacterClassesCommand extends Command
 {
+    // "advantageA"/"advantageB" mark which faces grant a point of "преимущество"
+    // (see docs/COMBAT_V2_DESIGN.md §1-2) — placeholder distribution, rogue
+    // leans into advantage/initiative as its class identity, warrior/mage less so.
     private const CLASSES = [
         [
             'code' => 'warrior',
@@ -26,9 +29,9 @@ class SeedCharacterClassesCommand extends Command
             'baseHp' => 30,
             'baseEnergy' => 10,
             'starterBits' => [
-                ['faceA' => 'attack', 'faceB' => 'attack'],
-                ['faceA' => 'attack', 'faceB' => 'defense'],
-                ['faceA' => 'defense', 'faceB' => 'action'],
+                ['faceA' => 'attack', 'faceB' => 'attack', 'advantageA' => true, 'advantageB' => false],
+                ['faceA' => 'attack', 'faceB' => 'defense', 'advantageA' => true, 'advantageB' => false],
+                ['faceA' => 'defense', 'faceB' => 'action', 'advantageA' => false, 'advantageB' => true],
             ],
         ],
         [
@@ -37,9 +40,9 @@ class SeedCharacterClassesCommand extends Command
             'baseHp' => 20,
             'baseEnergy' => 15,
             'starterBits' => [
-                ['faceA' => 'attack', 'faceB' => 'action'],
-                ['faceA' => 'action', 'faceB' => 'action'],
-                ['faceA' => 'defense', 'faceB' => 'attack'],
+                ['faceA' => 'attack', 'faceB' => 'action', 'advantageA' => false, 'advantageB' => true],
+                ['faceA' => 'action', 'faceB' => 'action', 'advantageA' => true, 'advantageB' => false],
+                ['faceA' => 'defense', 'faceB' => 'attack', 'advantageA' => false, 'advantageB' => false],
             ],
         ],
         [
@@ -48,9 +51,9 @@ class SeedCharacterClassesCommand extends Command
             'baseHp' => 24,
             'baseEnergy' => 12,
             'starterBits' => [
-                ['faceA' => 'attack', 'faceB' => 'defense'],
-                ['faceA' => 'attack', 'faceB' => 'action'],
-                ['faceA' => 'defense', 'faceB' => 'defense'],
+                ['faceA' => 'attack', 'faceB' => 'defense', 'advantageA' => true, 'advantageB' => true],
+                ['faceA' => 'attack', 'faceB' => 'action', 'advantageA' => true, 'advantageB' => false],
+                ['faceA' => 'defense', 'faceB' => 'defense', 'advantageA' => true, 'advantageB' => false],
             ],
         ],
     ];

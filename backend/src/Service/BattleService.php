@@ -6,6 +6,8 @@ use App\Battle\AbilityChoice;
 use App\Battle\AbilityResolver;
 use App\Battle\BitThrow;
 use App\Battle\CombatResolver;
+use App\Battle\ExchangeResolver;
+use App\Battle\RoundResult;
 use App\Battle\ThrowResult;
 use App\Entity\Battle;
 use App\Entity\BattleRound;
@@ -31,15 +33,19 @@ use Doctrine\ORM\EntityManagerInterface;
  *
  *  1. throwRound()  — both sides' bits are thrown and stored on the Battle
  *  2. resolveRound() (PvE/event) or submitActions() (PvP) — an AbilityChoice
- *     is applied, damage is computed via CombatResolver + AbilityResolver,
- *     pending state is cleared
+ *     is applied, damage is computed, pending state is cleared
  *
- * Combat abilities (docs/BATTLE_RULES.md): each round, whichever side has
- * rolled "action" faces picks ONE ability to spend all of them on — Flip
- * (the original/default), UnblockableDamage, Reroll, or DamageMirror — not
- * a mix. The bot opponent in PvE/event battles always uses Flip via
- * BotActionStrategy (unchanged); abilities are a real-player-only choice
- * for now.
+ * Damage computation differs by mode (see computeAndApplyRound()): PvE/event
+ * (and TournamentService's simulated matches) use ExchangeResolver, the
+ * priority + sequential exchange engine from docs/COMBAT_V2_DESIGN.md; PvP
+ * still uses the older simultaneous-reveal CombatResolver (§7 of that doc
+ * explains why that hasn't been ported yet).
+ *
+ * Combat abilities (docs/BATTLE_RULES.md §3.1): each round, whichever side
+ * has rolled "action" faces picks ONE ability to spend them on — Flip (the
+ * original/default), UnblockableDamage, Reroll, or DamageMirror — not a mix.
+ * The bot opponent in PvE/event battles always uses Flip (unchanged);
+ * abilities are a real-player-only choice for now.
  *
  * PvP lifecycle (see docs/BATTLE_ROOM_DESIGN.md): createPvpChallenge()
  * creates the Battle itself in `waiting` status — that row *is* the invite.
@@ -50,10 +56,14 @@ class BattleService
 {
     private const MONSTER_NAME = 'Тренировочный голем';
     private const MONSTER_HP = 20;
+    // Each entry: [faceA, faceB, advantageA, advantageB]. Placeholder balance
+    // (see docs/ROADMAP.md, Game Design backlog) — the monster deliberately
+    // rolls advantage less often than a well-built player character, so it
+    // rarely leads the exchange sequence (docs/COMBAT_V2_DESIGN.md §2).
     private const MONSTER_BITS = [
-        [BitFace::Attack, BitFace::Defense],
-        [BitFace::Attack, BitFace::Action],
-        [BitFace::Defense, BitFace::Defense],
+        [BitFace::Attack, BitFace::Defense, false, false],
+        [BitFace::Attack, BitFace::Action, false, true],
+        [BitFace::Defense, BitFace::Defense, false, false],
     ];
     public const XP_REWARD = 10;
     public const COIN_REWARD = 5;
@@ -70,6 +80,7 @@ class BattleService
         private readonly EntityManagerInterface $entityManager,
         private readonly BitRepository $bitRepository,
         private readonly CombatResolver $combatResolver,
+        private readonly ExchangeResolver $exchangeResolver,
         private readonly AbilityResolver $abilityResolver,
         private readonly QuestService $questService,
     ) {
@@ -253,16 +264,16 @@ class BattleService
         }
 
         $playerThrows = array_map(
-            static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB()),
+            static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()),
             $this->bitRepository->findByCharacter($battle->getCharacter()),
         );
         $opponentThrows = $battle->isPvp()
             ? array_map(
-                static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB()),
+                static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()),
                 $this->bitRepository->findByCharacter($battle->getOpponentCharacter()),
             )
             : array_map(
-                static fn (array $faces) => BitThrow::random($faces[0], $faces[1]),
+                static fn (array $bit) => BitThrow::random($bit[0], $bit[1], $bit[2], $bit[3]),
                 self::MONSTER_BITS,
             );
 
@@ -324,19 +335,12 @@ class BattleService
         $battle->setPendingThrows(null, null);
         $battle->setRoundDeadlineAt(null);
 
-        $characterActionCount = $this->abilityResolver->countActionFaces($playerThrows);
-        $opponentActionCount = $this->abilityResolver->countActionFaces($opponentThrows);
-
-        $playerThrows = $this->abilityResolver->applyPreDamage($playerThrows, $characterChoice);
-        // Reroll only applies to a real PvP opponent choosing it — for PvE/event
-        // the "opponent" is always the bot's fixed Flip choice, so this is a no-op there.
-        $opponentThrows = $this->abilityResolver->applyPreDamage($opponentThrows, $opponentChoice);
-
-        $characterFlipTargets = $this->abilityResolver->effectiveFlipTargets($characterChoice);
-        $opponentFlipTargets = $battle->isPvp() ? $this->abilityResolver->effectiveFlipTargets($opponentChoice) : null;
-
-        $result = $this->combatResolver->resolveRound($playerThrows, $opponentThrows, $characterFlipTargets, $opponentFlipTargets);
-        $result = $this->abilityResolver->applyPostDamage($result, $characterChoice, $opponentChoice, $characterActionCount, $opponentActionCount);
+        // PvP still uses the older simultaneous-reveal CombatResolver — the
+        // new priority/exchange engine (docs/COMBAT_V2_DESIGN.md) isn't wired
+        // into the live two-player protocol yet (see §7 of that doc).
+        $result = $battle->isPvp()
+            ? $this->resolveRoundLegacy($playerThrows, $opponentThrows, $characterChoice, $opponentChoice)
+            : $this->exchangeResolver->resolveRound($playerThrows, $opponentThrows, $characterChoice, $opponentChoice);
 
         $character = $battle->getCharacter();
         $character->setHp($character->getHp() - $result->damageToPlayer);
@@ -365,6 +369,31 @@ class BattleService
         $this->entityManager->flush();
 
         return $round;
+    }
+
+    /**
+     * The original simultaneous-reveal engine: apply pre-damage abilities
+     * (Reroll), tally attack vs. defense once via CombatResolver, then apply
+     * post-damage abilities (UnblockableDamage/DamageMirror). Still used for
+     * PvP — see the comment in computeAndApplyRound().
+     *
+     * @param BitThrow[] $playerThrows
+     * @param BitThrow[] $opponentThrows
+     */
+    private function resolveRoundLegacy(array $playerThrows, array $opponentThrows, AbilityChoice $characterChoice, AbilityChoice $opponentChoice): RoundResult
+    {
+        $characterActionCount = $this->abilityResolver->countActionFaces($playerThrows);
+        $opponentActionCount = $this->abilityResolver->countActionFaces($opponentThrows);
+
+        $playerThrows = $this->abilityResolver->applyPreDamage($playerThrows, $characterChoice);
+        $opponentThrows = $this->abilityResolver->applyPreDamage($opponentThrows, $opponentChoice);
+
+        $characterFlipTargets = $this->abilityResolver->effectiveFlipTargets($characterChoice);
+        $opponentFlipTargets = $this->abilityResolver->effectiveFlipTargets($opponentChoice);
+
+        $result = $this->combatResolver->resolveRound($playerThrows, $opponentThrows, $characterFlipTargets, $opponentFlipTargets);
+
+        return $this->abilityResolver->applyPostDamage($result, $characterChoice, $opponentChoice, $characterActionCount, $opponentActionCount);
     }
 
     private function resolveOutcome(Battle $battle): void

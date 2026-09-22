@@ -22,7 +22,7 @@ class AbilityResolverTest extends TestCase
 
     private function fixed(BitFace $face): BitThrow
     {
-        return new BitThrow($face, $face, $face);
+        return new BitThrow($face, $face, false, false, $face, false);
     }
 
     // --- assertAffordable ---
@@ -84,7 +84,7 @@ class AbilityResolverTest extends TestCase
         // Both faces of this bit are the same value, so a reroll is
         // deterministic — useful to prove it re-derives from faceA/faceB
         // (not just leaving the original throw in place).
-        $throws = [new BitThrow(BitFace::Defense, BitFace::Defense, BitFace::Attack)];
+        $throws = [new BitThrow(BitFace::Defense, BitFace::Defense, false, false, BitFace::Attack, false)];
 
         $result = $this->resolver->applyPreDamage($throws, new AbilityChoice(AbilityType::Reroll));
 

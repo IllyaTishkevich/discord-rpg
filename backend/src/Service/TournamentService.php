@@ -2,14 +2,13 @@
 
 namespace App\Service;
 
+use App\Battle\AbilityChoice;
 use App\Battle\BitThrow;
-use App\Battle\BotActionStrategy;
-use App\Battle\CombatResolver;
+use App\Battle\ExchangeResolver;
 use App\Entity\Character;
 use App\Entity\Tournament;
 use App\Entity\TournamentEntry;
 use App\Entity\TournamentMatch;
-use App\Enum\BitFace;
 use App\Enum\TournamentStatus;
 use App\Exception\AlreadyRegisteredException;
 use App\Exception\NotEnoughEntriesException;
@@ -35,7 +34,7 @@ class TournamentService
         private readonly TournamentRepository $tournamentRepository,
         private readonly TournamentEntryRepository $entryRepository,
         private readonly BitRepository $bitRepository,
-        private readonly CombatResolver $combatResolver,
+        private readonly ExchangeResolver $exchangeResolver,
     ) {
     }
 
@@ -113,10 +112,11 @@ class TournamentService
     }
 
     /**
-     * Symmetric simulated match: unlike a PvE fight (where only the bot side
-     * auto-targets action flips), both real characters here get the same
-     * BotActionStrategy heuristic applied on their behalf, since neither is
-     * an interactive player in this simulation.
+     * Symmetric simulated match: both real characters here are driven by
+     * ExchangeResolver's built-in heuristic on both sides (Flip is the only
+     * ability either "player" can use), since neither is an interactive
+     * player in this simulation — same engine as PvE/event auto-play,
+     * see docs/COMBAT_V2_DESIGN.md.
      */
     private function simulateMatch(Character $a, Character $b): Character
     {
@@ -126,16 +126,10 @@ class TournamentService
         $bHp = $b->getMaxHp();
 
         for ($round = 0; $round < self::MAX_SIMULATED_ROUNDS; ++$round) {
-            $aThrows = array_map(static fn ($bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB()), $aBits);
-            $bThrows = array_map(static fn ($bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB()), $bBits);
+            $aThrows = array_map(static fn ($bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()), $aBits);
+            $bThrows = array_map(static fn ($bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()), $bBits);
 
-            $aActionCount = \count(array_filter($aThrows, static fn (BitThrow $t) => BitFace::Action === $t->thrownFace));
-            $aTargets = BotActionStrategy::chooseTargets(
-                array_map(static fn (BitThrow $t) => $t->thrownFace, $bThrows),
-                $aActionCount,
-            );
-
-            $result = $this->combatResolver->resolveRound($aThrows, $bThrows, $aTargets);
+            $result = $this->exchangeResolver->resolveRound($aThrows, $bThrows, AbilityChoice::flip(), AbilityChoice::flip());
             $aHp -= $result->damageToPlayer;
             $bHp -= $result->damageToOpponent;
 

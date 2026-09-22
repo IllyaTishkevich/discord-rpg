@@ -20,7 +20,7 @@ class CombatResolverTest extends TestCase
     {
         // A "coin" whose both faces are the same value always throws that value,
         // and flipping it is a no-op — useful for deterministic test fixtures.
-        return new BitThrow($face, $face, $face);
+        return new BitThrow($face, $face, false, false, $face, false);
     }
 
     public function testAttackWithoutDefenseDealsFullDamage(): void
@@ -72,7 +72,7 @@ class CombatResolverTest extends TestCase
 
     public function testPlayerActionFlipsTargetedOpponentBit(): void
     {
-        $opponentBit = new BitThrow(BitFace::Defense, BitFace::Attack, BitFace::Defense);
+        $opponentBit = new BitThrow(BitFace::Defense, BitFace::Attack, false, false, BitFace::Defense, false);
 
         $result = $this->resolver->resolveRound(
             playerThrows: [$this->fixed(BitFace::Action), $this->fixed(BitFace::Attack)],
@@ -88,8 +88,8 @@ class CombatResolverTest extends TestCase
 
     public function testPlayerActionTargetsAreCappedByRolledActionCount(): void
     {
-        $opponentBitA = new BitThrow(BitFace::Defense, BitFace::Attack, BitFace::Defense);
-        $opponentBitB = new BitThrow(BitFace::Defense, BitFace::Attack, BitFace::Defense);
+        $opponentBitA = new BitThrow(BitFace::Defense, BitFace::Attack, false, false, BitFace::Defense, false);
+        $opponentBitB = new BitThrow(BitFace::Defense, BitFace::Attack, false, false, BitFace::Defense, false);
 
         $result = $this->resolver->resolveRound(
             // Only one "action" face rolled, but two targets requested.
@@ -116,7 +116,7 @@ class CombatResolverTest extends TestCase
 
     public function testBotFlipsPlayerAttackFaceToReduceIncomingDamage(): void
     {
-        $playerBit = new BitThrow(BitFace::Attack, BitFace::Action, BitFace::Attack);
+        $playerBit = new BitThrow(BitFace::Attack, BitFace::Action, false, false, BitFace::Attack, false);
 
         $result = $this->resolver->resolveRound(
             playerThrows: [$playerBit],
@@ -133,8 +133,8 @@ class CombatResolverTest extends TestCase
         // BotActionStrategy would flip the "attack" face first (survival
         // priority) — but an explicit PvP opponent choice should override
         // that and flip the "defense" face instead.
-        $playerBitA = new BitThrow(BitFace::Attack, BitFace::Defense, BitFace::Attack);
-        $playerBitB = new BitThrow(BitFace::Defense, BitFace::Attack, BitFace::Defense);
+        $playerBitA = new BitThrow(BitFace::Attack, BitFace::Defense, false, false, BitFace::Attack, false);
+        $playerBitB = new BitThrow(BitFace::Defense, BitFace::Attack, false, false, BitFace::Defense, false);
 
         $result = $this->resolver->resolveRound(
             playerThrows: [$playerBitA, $playerBitB],
@@ -149,8 +149,8 @@ class CombatResolverTest extends TestCase
 
     public function testExplicitOpponentActionTargetsAreCappedByRolledActionCount(): void
     {
-        $playerBitA = new BitThrow(BitFace::Defense, BitFace::Attack, BitFace::Defense);
-        $playerBitB = new BitThrow(BitFace::Defense, BitFace::Attack, BitFace::Defense);
+        $playerBitA = new BitThrow(BitFace::Defense, BitFace::Attack, false, false, BitFace::Defense, false);
+        $playerBitB = new BitThrow(BitFace::Defense, BitFace::Attack, false, false, BitFace::Defense, false);
 
         $result = $this->resolver->resolveRound(
             playerThrows: [$playerBitA, $playerBitB],
@@ -168,7 +168,7 @@ class CombatResolverTest extends TestCase
     {
         // An explicit empty array (a real PvP player choosing not to flip
         // anything) must NOT fall back to BotActionStrategy.
-        $playerBit = new BitThrow(BitFace::Attack, BitFace::Action, BitFace::Attack);
+        $playerBit = new BitThrow(BitFace::Attack, BitFace::Action, false, false, BitFace::Attack, false);
 
         $result = $this->resolver->resolveRound(
             playerThrows: [$playerBit],

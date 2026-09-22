@@ -6,6 +6,7 @@ use App\Entity\Equipment;
 use App\Enum\EquipmentEffectType;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
@@ -46,6 +47,8 @@ class EquipmentCrudController extends AbstractCrudController
         yield ChoiceField::new('effectType', 'Тип эффекта');
         yield ChoiceField::new('bitFaceA', 'Грань A (для bit)')->hideOnIndex();
         yield ChoiceField::new('bitFaceB', 'Грань B (для bit)')->hideOnIndex();
+        yield BooleanField::new('bitAdvantageA', 'Преимущество на A (для bit)')->hideOnIndex();
+        yield BooleanField::new('bitAdvantageB', 'Преимущество на B (для bit)')->hideOnIndex();
         yield IntegerField::new('hpBonus', 'Бонус HP (для hp)')->hideOnIndex();
     }
 }

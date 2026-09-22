@@ -42,7 +42,13 @@ class CharacterController extends AbstractApiController
 
         $bits = [];
         foreach ($characterClass->getStarterBits() as $starterBit) {
-            $bit = new Bit($character, BitFace::from($starterBit['faceA']), BitFace::from($starterBit['faceB']));
+            $bit = new Bit(
+                $character,
+                BitFace::from($starterBit['faceA']),
+                BitFace::from($starterBit['faceB']),
+                $starterBit['advantageA'] ?? false,
+                $starterBit['advantageB'] ?? false,
+            );
             $entityManager->persist($bit);
             $bits[] = $bit;
         }

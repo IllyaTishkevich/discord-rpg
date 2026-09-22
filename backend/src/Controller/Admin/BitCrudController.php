@@ -8,6 +8,7 @@ use App\Repository\CharacterRepository;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 
@@ -38,6 +39,8 @@ class BitCrudController extends AbstractCrudController
         // check failed and it fell back to auto-numbered option values.
         yield ChoiceField::new('faceA', 'Грань A');
         yield ChoiceField::new('faceB', 'Грань B');
+        yield BooleanField::new('advantageA', 'Преимущество на A');
+        yield BooleanField::new('advantageB', 'Преимущество на B');
     }
 
     /**

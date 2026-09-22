@@ -24,8 +24,8 @@ class SeedEquipmentCommand extends Command
     private const ITEMS = [
         ['code' => 'leather_vambraces', 'name' => 'Кожаные наручи', 'price' => 20, 'type' => 'hp', 'hpBonus' => 5],
         ['code' => 'novice_shield', 'name' => 'Щит новичка', 'price' => 50, 'type' => 'hp', 'hpBonus' => 10],
-        ['code' => 'lucky_coin', 'name' => 'Монета удачи', 'price' => 30, 'type' => 'bit', 'faceA' => BitFace::Attack, 'faceB' => BitFace::Action],
-        ['code' => 'twin_blade', 'name' => 'Двойной клинок', 'price' => 40, 'type' => 'bit', 'faceA' => BitFace::Attack, 'faceB' => BitFace::Attack],
+        ['code' => 'lucky_coin', 'name' => 'Монета удачи', 'price' => 30, 'type' => 'bit', 'faceA' => BitFace::Attack, 'faceB' => BitFace::Action, 'advantageA' => true, 'advantageB' => true],
+        ['code' => 'twin_blade', 'name' => 'Двойной клинок', 'price' => 40, 'type' => 'bit', 'faceA' => BitFace::Attack, 'faceB' => BitFace::Attack, 'advantageA' => false, 'advantageB' => false],
     ];
 
     public function __construct(
@@ -51,7 +51,7 @@ class SeedEquipmentCommand extends Command
             if (EquipmentEffectType::Hp === $effectType) {
                 $equipment->setHpBonus($definition['hpBonus']);
             } else {
-                $equipment->setBitFaces($definition['faceA'], $definition['faceB']);
+                $equipment->setBitFaces($definition['faceA'], $definition['faceB'], $definition['advantageA'] ?? false, $definition['advantageB'] ?? false);
             }
 
             $this->entityManager->persist($equipment);

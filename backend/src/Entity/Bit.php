@@ -28,11 +28,25 @@ class Bit
     #[ORM\Column(enumType: BitFace::class)]
     private BitFace $faceB;
 
-    public function __construct(Character $character, BitFace $faceA, BitFace $faceB)
+    /**
+     * "Преимущество" (advantage) — independent of face type: a face can be
+     * e.g. "attack" with or without advantage. Whichever side rolls more
+     * advantage faces this round leads the exchange sequence (see
+     * docs/COMBAT_V2_DESIGN.md §2).
+     */
+    #[ORM\Column]
+    private bool $advantageA;
+
+    #[ORM\Column]
+    private bool $advantageB;
+
+    public function __construct(Character $character, BitFace $faceA, BitFace $faceB, bool $advantageA = false, bool $advantageB = false)
     {
         $this->character = $character;
         $this->faceA = $faceA;
         $this->faceB = $faceB;
+        $this->advantageA = $advantageA;
+        $this->advantageB = $advantageB;
     }
 
     public function getId(): ?int
@@ -65,6 +79,30 @@ class Bit
     public function setFaceB(BitFace $faceB): static
     {
         $this->faceB = $faceB;
+
+        return $this;
+    }
+
+    public function hasAdvantageA(): bool
+    {
+        return $this->advantageA;
+    }
+
+    public function setAdvantageA(bool $advantageA): static
+    {
+        $this->advantageA = $advantageA;
+
+        return $this;
+    }
+
+    public function hasAdvantageB(): bool
+    {
+        return $this->advantageB;
+    }
+
+    public function setAdvantageB(bool $advantageB): static
+    {
+        $this->advantageB = $advantageB;
 
         return $this;
     }
