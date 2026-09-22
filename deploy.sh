@@ -21,7 +21,7 @@
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/opt/discord-rpg}"
+APP_DIR="${APP_DIR:-/var/www/discord-rpg}"
 DEPLOY_USER="${DEPLOY_USER:-discord-rpg}"
 BOT_SERVICE="${BOT_SERVICE:-discord-rpg-bot}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-}"
