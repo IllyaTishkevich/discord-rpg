@@ -6,6 +6,7 @@ use App\Battle\AbilityChoice;
 use App\Battle\AbilityResolver;
 use App\Battle\BitThrow;
 use App\Battle\CombatResolver;
+use App\Battle\Exchange;
 use App\Battle\ExchangeResolver;
 use App\Battle\RoundResult;
 use App\Battle\ThrowResult;
@@ -359,6 +360,15 @@ class BattleService
             $this->faceValues($result->opponentFaces),
             $result->damageToOpponent,
             $result->damageToPlayer,
+            array_map(static fn (Exchange $e) => [
+                'leaderIsPlayer' => $e->leaderIsPlayer,
+                'leaderFace' => $e->leaderFace->value,
+                'leaderCount' => $e->leaderCount,
+                'responderFace' => $e->responderFace?->value,
+                'responderCount' => $e->responderCount,
+                'damageToPlayer' => $e->damageToPlayer,
+                'damageToOpponent' => $e->damageToOpponent,
+            ], $result->exchanges),
         );
         $this->entityManager->persist($round);
 

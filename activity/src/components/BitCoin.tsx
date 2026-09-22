@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import type { BitFace } from "../types/character";
 import "./BitCoin.css";
 
-const FACE_ICON: Record<BitFace, string> = {
+export const FACE_ICON: Record<BitFace, string> = {
   attack: "⚔️",
   defense: "🛡️",
   action: "✨",
 };
 
-const FACE_LABEL: Record<BitFace, string> = {
+export const FACE_LABEL: Record<BitFace, string> = {
   attack: "Удар",
   defense: "Защита",
   action: "Действие",

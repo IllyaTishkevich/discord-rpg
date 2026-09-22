@@ -58,6 +58,7 @@ class BattleSerializer
             'opponentFaces' => $round->getOpponentFaces(),
             'damageToOpponent' => $round->getDamageToOpponent(),
             'damageToPlayer' => $round->getDamageToPlayer(),
+            'exchanges' => $round->getExchanges(),
         ];
     }
 
@@ -117,6 +118,9 @@ class BattleSerializer
             'opponentFaces' => $viewerIsOpponentSide ? $round->getPlayerFaces() : $round->getOpponentFaces(),
             'damageToOpponent' => $viewerIsOpponentSide ? $round->getDamageToPlayer() : $round->getDamageToOpponent(),
             'damageToPlayer' => $viewerIsOpponentSide ? $round->getDamageToOpponent() : $round->getDamageToPlayer(),
+            // PvP still uses the legacy single-tally engine, so this is
+            // always empty for now — see docs/COMBAT_V2_DESIGN.md §7.
+            'exchanges' => [],
         ];
     }
 

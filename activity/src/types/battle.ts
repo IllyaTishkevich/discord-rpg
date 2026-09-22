@@ -30,12 +30,25 @@ export interface ThrowResult {
   playerActionCount: number;
 }
 
+export interface Exchange {
+  leaderIsPlayer: boolean;
+  leaderFace: BitFace;
+  leaderCount: number;
+  responderFace: BitFace | null;
+  responderCount: number;
+  damageToPlayer: number;
+  damageToOpponent: number;
+}
+
 export interface RoundResult {
   roundNumber: number;
   playerFaces: BitFace[];
   opponentFaces: BitFace[];
   damageToOpponent: number;
   damageToPlayer: number;
+  // Step-by-step log from the combat v2 exchange engine (PvE/event) — empty
+  // for PvP, which still resolves the whole round in one simultaneous tally.
+  exchanges: Exchange[];
 }
 
 export interface ResolveResponse {

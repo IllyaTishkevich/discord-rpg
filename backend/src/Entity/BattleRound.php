@@ -7,7 +7,11 @@ use Doctrine\ORM\Mapping as ORM;
 
 /**
  * Log entry for a single resolved round: the final (post-action) face lists
- * for both sides, and the resulting damage.
+ * for both sides, the resulting damage, and — for battles resolved via the
+ * combat v2 exchange engine (docs/COMBAT_V2_DESIGN.md) — the step-by-step
+ * exchange log, so the Activity can show the player what actually happened
+ * instead of just the final tally. Empty for PvP, which still uses the
+ * older single-tally CombatResolver (see BattleService::resolveRoundLegacy()).
  */
 #[ORM\Entity(repositoryClass: BattleRoundRepository::class)]
 class BattleRound
@@ -38,12 +42,19 @@ class BattleRound
     #[ORM\Column]
     private int $damageToPlayer;
 
+    /**
+     * @var array{leaderIsPlayer: bool, leaderFace: string, leaderCount: int, responderFace: ?string, responderCount: int, damageToPlayer: int, damageToOpponent: int}[]
+     */
+    #[ORM\Column(type: 'json')]
+    private array $exchanges;
+
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
     /**
-     * @param string[] $playerFaces
-     * @param string[] $opponentFaces
+     * @param string[]                                                                                                                                                 $playerFaces
+     * @param string[]                                                                                                                                                 $opponentFaces
+     * @param array{leaderIsPlayer: bool, leaderFace: string, leaderCount: int, responderFace: ?string, responderCount: int, damageToPlayer: int, damageToOpponent: int}[] $exchanges
      */
     public function __construct(
         Battle $battle,
@@ -52,6 +63,7 @@ class BattleRound
         array $opponentFaces,
         int $damageToOpponent,
         int $damageToPlayer,
+        array $exchanges = [],
     ) {
         $this->battle = $battle;
         $this->roundNumber = $roundNumber;
@@ -59,6 +71,7 @@ class BattleRound
         $this->opponentFaces = $opponentFaces;
         $this->damageToOpponent = $damageToOpponent;
         $this->damageToPlayer = $damageToPlayer;
+        $this->exchanges = $exchanges;
         $this->createdAt = new \DateTimeImmutable();
     }
 
@@ -95,6 +108,14 @@ class BattleRound
     public function getDamageToPlayer(): int
     {
         return $this->damageToPlayer;
+    }
+
+    /**
+     * @return array{leaderIsPlayer: bool, leaderFace: string, leaderCount: int, responderFace: ?string, responderCount: int, damageToPlayer: int, damageToOpponent: int}[]
+     */
+    public function getExchanges(): array
+    {
+        return $this->exchanges;
     }
 
     public function getCreatedAt(): \DateTimeImmutable

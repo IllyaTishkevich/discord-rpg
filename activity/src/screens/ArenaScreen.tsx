@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { fetchBattle, fetchLatestRound, resolveRound, submitActions, throwRound } from "../api/battles";
-import { BitCoin } from "../components/BitCoin";
+import { BitCoin, FACE_LABEL } from "../components/BitCoin";
 import { StatBar } from "../components/StatBar";
-import type { AbilityChoice, AbilityType, BattleState, RoundResult, ThrowResult } from "../types/battle";
+import type { AbilityChoice, AbilityType, BattleState, Exchange, RoundResult, ThrowResult } from "../types/battle";
 import "./ArenaScreen.css";
 
 type Phase = "idle" | "thrown" | "waiting" | "resolved";
@@ -25,6 +25,24 @@ function isAffordable(option: AbilityOption, actionCount: number): boolean {
   if (option.type === "flip") return true;
   if (option.type === "unblockable_damage") return actionCount >= 1;
   return actionCount >= (option.fixedCost ?? 0);
+}
+
+// Describes one step of the round's exchange sequence in plain language —
+// who led with what, how the other side reacted, and what it cost. Empty
+// for PvP battles (still resolved as one simultaneous tally), so the log
+// section below only renders when there's something to show.
+function describeExchange(exchange: Exchange): string {
+  const leaderLabel = exchange.leaderIsPlayer ? "Ты" : "Соперник";
+  const responderLabel = exchange.leaderIsPlayer ? "Соперник" : "Ты";
+  const leaderMove = `${FACE_LABEL[exchange.leaderFace]} ×${exchange.leaderCount}`;
+  const responderMove = exchange.responderFace ? `${FACE_LABEL[exchange.responderFace]} ×${exchange.responderCount}` : "нет ответа";
+
+  const damageParts: string[] = [];
+  if (exchange.damageToOpponent > 0) damageParts.push(`−${exchange.damageToOpponent} сопернику`);
+  if (exchange.damageToPlayer > 0) damageParts.push(`−${exchange.damageToPlayer} тебе`);
+  const damageText = damageParts.length > 0 ? damageParts.join(", ") : "без урона";
+
+  return `${leaderLabel}: ${leaderMove} → ${responderLabel}: ${responderMove} — ${damageText}`;
 }
 
 interface Props {
@@ -160,6 +178,8 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
     setPhase("idle");
   }
 
+  const selectedOption = ABILITY_OPTIONS.find((option) => option.type === selectedAbility);
+
   return (
     <div className="arena">
       <h1>{battle.opponent.name}</h1>
@@ -206,19 +226,30 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
               <div className="arena__ability-list">
                 {ABILITY_OPTIONS.map((option) => {
                   const affordable = isAffordable(option, throwResult.playerActionCount);
+                  const isSelected = selectedAbility === option.type;
                   return (
                     <button
                       key={option.type}
-                      className={`arena__ability${selectedAbility === option.type ? " arena__ability--selected" : ""}`}
+                      className={`arena__ability${isSelected ? " arena__ability--selected" : ""}`}
                       disabled={!affordable}
                       onClick={() => selectAbility(option.type)}
-                      title={option.description}
                     >
-                      {option.label}
+                      <span className="arena__ability-top">
+                        <span className="arena__ability-check" aria-hidden="true">
+                          {isSelected ? "✓" : ""}
+                        </span>
+                        <span className="arena__ability-label">{option.label}</span>
+                      </span>
+                      <span className="arena__ability-desc">{option.description}</span>
                     </button>
                   );
                 })}
               </div>
+              {selectedOption && (
+                <p className="arena__hint arena__hint--selected">
+                  Выбрано: <strong>{selectedOption.label}</strong>. {selectedOption.description}.
+                </p>
+              )}
               {selectedAbility === "flip" && (
                 <p className="arena__hint">
                   Выбери до {throwResult.playerActionCount} бит противника, чтобы перевернуть их ({selectedTargets.length}/{throwResult.playerActionCount})
@@ -239,8 +270,17 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
 
       {phase === "resolved" && lastRound && (
         <div className="arena__result">
-          <p>
-            Урон противнику: {lastRound.damageToOpponent} · Урон тебе: {lastRound.damageToPlayer}
+          {lastRound.exchanges.length > 0 && (
+            <div className="arena__exchange-log">
+              {lastRound.exchanges.map((exchange, index) => (
+                <p key={index} className="arena__exchange-line">
+                  {describeExchange(exchange)}
+                </p>
+              ))}
+            </div>
+          )}
+          <p className="arena__result-total">
+            Итого — урон противнику: {lastRound.damageToOpponent} · урон тебе: {lastRound.damageToPlayer}
           </p>
           <button className="arena__action" onClick={handleContinue}>
             {battle.status === "in_progress" ? "Следующий раунд" : "Завершить бой"}
