@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { startPveBattle } from "./api/battles";
+import { fetchMyActivePvp, startPveBattle } from "./api/battles";
 import { fetchMyCharacter } from "./api/characters";
 import { ApiError, isEmbeddedInDiscord } from "./api/client";
 import { fetchActiveEvent, startEventBattle } from "./api/events";
@@ -7,6 +7,7 @@ import { authenticateWithDiscord } from "./discord/sdk";
 import { ArenaScreen } from "./screens/ArenaScreen";
 import { BattleResultScreen } from "./screens/BattleResultScreen";
 import { ClassSelectScreen } from "./screens/ClassSelectScreen";
+import { DuelLobbyScreen } from "./screens/DuelLobbyScreen";
 import { InventoryScreen } from "./screens/InventoryScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { ShopScreen } from "./screens/ShopScreen";
@@ -25,6 +26,7 @@ type LoadState =
   | { status: "inventory"; character: Character }
   | { status: "tournament"; character: Character }
   | { status: "quest"; character: Character }
+  | { status: "duel-lobby"; character: Character; battle: BattleState }
   | { status: "arena"; character: Character; battle: BattleState }
   | { status: "battle-result"; character: Character; battle: BattleState }
   | { status: "error"; message: string };
@@ -41,11 +43,28 @@ function App() {
 
     authenticateWithDiscord()
       .then(() => fetchMyCharacter())
-      .then((character) => {
-        setState({ status: "profile", character });
+      .then(async (character) => {
         fetchActiveEvent()
           .then(setActiveEvent)
           .catch(() => setActiveEvent(null));
+
+        // A pending/active duel takes priority over the profile screen —
+        // the player came here to fight, not to browse the shop.
+        try {
+          const pvpBattle = await fetchMyActivePvp();
+          if (pvpBattle) {
+            setState(
+              pvpBattle.status === "in_progress"
+                ? { status: "arena", character, battle: pvpBattle }
+                : { status: "duel-lobby", character, battle: pvpBattle },
+            );
+            return;
+          }
+        } catch {
+          // no active duel (or lookup failed) — fall through to the profile screen
+        }
+
+        setState({ status: "profile", character });
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 404) {
@@ -97,6 +116,16 @@ function App() {
 
   if (state.status === "no-character") {
     return <ClassSelectScreen onCharacterCreated={(character) => setState({ status: "profile", character })} />;
+  }
+
+  if (state.status === "duel-lobby") {
+    return (
+      <DuelLobbyScreen
+        battle={state.battle}
+        onReady={(battle) => setState({ status: "arena", character: state.character, battle })}
+        onDeclined={() => setState({ status: "profile", character: state.character })}
+      />
+    );
   }
 
   if (state.status === "arena") {

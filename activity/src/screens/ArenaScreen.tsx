@@ -1,11 +1,11 @@
-import { useState } from "react";
-import { resolveRound, throwRound } from "../api/battles";
+import { useEffect, useState } from "react";
+import { fetchBattle, fetchLatestRound, resolveRound, submitActions, throwRound } from "../api/battles";
 import { BitCoin } from "../components/BitCoin";
 import { StatBar } from "../components/StatBar";
 import type { BattleState, RoundResult, ThrowResult } from "../types/battle";
 import "./ArenaScreen.css";
 
-type Phase = "idle" | "thrown" | "resolved";
+type Phase = "idle" | "thrown" | "waiting" | "resolved";
 
 interface Props {
   initialBattle: BattleState;
@@ -13,6 +13,7 @@ interface Props {
 }
 
 export function ArenaScreen({ initialBattle, onFinished }: Props) {
+  const isPvp = initialBattle.mode === "pvp";
   const [battle, setBattle] = useState(initialBattle);
   const [phase, setPhase] = useState<Phase>("idle");
   const [throwResult, setThrowResult] = useState<ThrowResult | null>(null);
@@ -36,6 +37,17 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
     }
   }
 
+  // PvP: throwing is automatic (the server does it the moment both sides are
+  // ready, and throwRound() is idempotent for later rounds too — whichever
+  // client gets there first actually rolls, the other just reads the same
+  // result), so there's no manual "throw" button in that mode.
+  useEffect(() => {
+    if (isPvp && phase === "idle") {
+      handleThrow();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPvp, phase]);
+
   async function handleResolve() {
     setBusy(true);
     setError(null);
@@ -50,6 +62,49 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
       setBusy(false);
     }
   }
+
+  async function handleSubmitActions() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await submitActions(battle.id, selectedTargets);
+      if (response.round && response.battle) {
+        setLastRound(response.round);
+        setBattle(response.battle);
+        setPhase("resolved");
+        return;
+      }
+      setPhase("waiting");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось отправить действие.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // While waiting on the opponent's submit, poll until the round actually
+  // resolves (hasPendingThrow flips back to false), then fetch what happened —
+  // if the opponent was the one to trigger resolution, their response carried
+  // the round data, not ours.
+  useEffect(() => {
+    if (phase !== "waiting") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const updated = await fetchBattle(battle.id);
+        if (!updated.hasPendingThrow) {
+          const round = await fetchLatestRound(battle.id);
+          setLastRound(round);
+          setBattle(updated);
+          setPhase("resolved");
+        }
+      } catch {
+        // transient poll failure — try again next tick
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [phase, battle.id]);
 
   function toggleTarget(index: number) {
     if (!throwResult) return;
@@ -78,14 +133,15 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
     <div className="arena">
       <h1>{battle.opponent.name}</h1>
 
-      <StatBar label="Противник" value={battle.opponent.hp} max={battle.opponent.maxHp} variant="enemy" />
+      <StatBar label="Противник" value={battle.opponent.hp ?? 0} max={battle.opponent.maxHp ?? 0} variant="enemy" />
       <StatBar label="Ты" value={battle.character.hp} max={battle.character.maxHp} variant="hp" />
 
-      {phase === "idle" && (
+      {!isPvp && phase === "idle" && (
         <button className="arena__action" disabled={busy} onClick={handleThrow}>
           Бросить биты
         </button>
       )}
+      {isPvp && phase === "idle" && <p className="arena__hint">Бросаем биты...</p>}
 
       {throwResult && (
         <div className="arena__board">
@@ -120,12 +176,14 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
           )}
 
           {phase === "thrown" && (
-            <button className="arena__action" disabled={busy} onClick={handleResolve}>
-              Разрешить раунд
+            <button className="arena__action" disabled={busy} onClick={isPvp ? handleSubmitActions : handleResolve}>
+              {isPvp ? "Подтвердить ход" : "Разрешить раунд"}
             </button>
           )}
         </div>
       )}
+
+      {phase === "waiting" && <p className="arena__hint">Ждём соперника...</p>}
 
       {phase === "resolved" && lastRound && (
         <div className="arena__result">

@@ -2,12 +2,19 @@ import type { BitFace } from "./character";
 
 export interface BattleState {
   id: number;
-  status: "in_progress" | "won" | "lost";
+  mode?: "pve" | "event" | "pvp";
+  status: "waiting" | "in_progress" | "won" | "lost" | "abandoned";
   roundNumber: number;
   hasPendingThrow: boolean;
-  opponent: { name: string; hp: number; maxHp: number };
+  opponent: { name: string | null; hp: number | null; maxHp: number | null };
   character: { hp: number; maxHp: number };
   rewards: { xp: number; coins: number } | null;
+  // PvP only:
+  youReady?: boolean;
+  opponentReady?: boolean;
+  opponentAccepted?: boolean;
+  youSubmitted?: boolean;
+  opponentSubmitted?: boolean;
 }
 
 export interface ThrowResult {
@@ -27,4 +34,10 @@ export interface RoundResult {
 export interface ResolveResponse {
   round: RoundResult;
   battle: BattleState;
+}
+
+export interface SubmitActionsResponse {
+  waitingForOpponent?: true;
+  round?: RoundResult;
+  battle?: BattleState;
 }

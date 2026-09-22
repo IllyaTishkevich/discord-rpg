@@ -189,6 +189,26 @@ class BattleController extends AbstractApiController
         ]);
     }
 
+    /**
+     * PvP only: the most recently resolved round — for the side that was
+     * waiting on the other player, this is how they learn what happened
+     * (the resolving request's response went to whoever submitted second).
+     */
+    #[Route('/{id}/rounds/latest', name: 'battle_latest_round', methods: ['GET'])]
+    public function latestRound(Battle $battle): JsonResponse
+    {
+        $viewerIsOpponentSide = $this->requireParticipantSide($battle);
+
+        $latest = $battle->getRounds()->last();
+        if (false === $latest) {
+            return $this->json(null);
+        }
+
+        return $this->json($battle->isPvp()
+            ? $this->serializer->roundForViewer($latest, $viewerIsOpponentSide)
+            : $this->serializer->round($latest));
+    }
+
     private function requireCharacter(): Character
     {
         /** @var User $user */

@@ -1,0 +1,42 @@
+.duel-lobby {
+  padding: 24px;
+  color: #fff;
+  text-align: center;
+}
+
+.duel-lobby__actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.duel-lobby__ready {
+  background: #23a55a;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.duel-lobby__decline {
+  background: transparent;
+  color: #f23f42;
+  border: 1px solid #f23f42;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.duel-lobby__ready:disabled,
+.duel-lobby__decline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.duel-lobby__error {
+  color: #f23f42;
+}
