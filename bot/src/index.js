@@ -7,7 +7,9 @@ import path from "node:path";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  // GuildVoiceStates is required so interaction.member.voice.channel resolves
+  // (used by /play to find which voice channel to launch the Activity in).
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
 });
 
 client.commands = new Collection();
