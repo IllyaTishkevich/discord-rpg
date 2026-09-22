@@ -47,6 +47,15 @@ class Battle
     private ?\DateTimeImmutable $finishedAt = null;
 
     /**
+     * Set when this battle was fought against a server-wide event's monster
+     * rather than the regular training bot — doesn't cost energy, and pays
+     * out bigger rewards (see BattleService::resolveOutcome).
+     */
+    #[ORM\ManyToOne(targetEntity: Event::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Event $event = null;
+
+    /**
      * Both sides' bits thrown for the round currently awaiting resolution —
      * set by "throw", consumed and cleared by "resolve". Storing this
      * server-side (rather than trusting the client to echo it back) is what
@@ -144,6 +153,18 @@ class Battle
     public function getFinishedAt(): ?\DateTimeImmutable
     {
         return $this->finishedAt;
+    }
+
+    public function getEvent(): ?Event
+    {
+        return $this->event;
+    }
+
+    public function setEvent(?Event $event): static
+    {
+        $this->event = $event;
+
+        return $this;
     }
 
     public function hasPendingThrow(): bool

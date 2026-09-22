@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { startPveBattle } from "./api/battles";
 import { fetchMyCharacter } from "./api/characters";
 import { ApiError, isEmbeddedInDiscord } from "./api/client";
+import { fetchActiveEvent, startEventBattle } from "./api/events";
 import { authenticateWithDiscord } from "./discord/sdk";
 import { ArenaScreen } from "./screens/ArenaScreen";
 import { BattleResultScreen } from "./screens/BattleResultScreen";
@@ -11,6 +12,7 @@ import { ProfileScreen } from "./screens/ProfileScreen";
 import { ShopScreen } from "./screens/ShopScreen";
 import type { BattleState } from "./types/battle";
 import type { Character } from "./types/character";
+import type { ActiveEvent } from "./types/event";
 
 type LoadState =
   | { status: "loading" }
@@ -25,6 +27,7 @@ type LoadState =
 
 function App() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
 
   useEffect(() => {
     if (!isEmbeddedInDiscord) {
@@ -34,7 +37,12 @@ function App() {
 
     authenticateWithDiscord()
       .then(() => fetchMyCharacter())
-      .then((character) => setState({ status: "profile", character }))
+      .then((character) => {
+        setState({ status: "profile", character });
+        fetchActiveEvent()
+          .then(setActiveEvent)
+          .catch(() => setActiveEvent(null));
+      })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 404) {
           setState({ status: "no-character" });
@@ -50,6 +58,15 @@ function App() {
       setState({ status: "arena", character, battle });
     } catch (err) {
       setState({ status: "error", message: err instanceof Error ? err.message : "Не удалось начать бой." });
+    }
+  }
+
+  async function handleJoinEvent(character: Character) {
+    try {
+      const battle = await startEventBattle();
+      setState({ status: "arena", character, battle });
+    } catch (err) {
+      setState({ status: "error", message: err instanceof Error ? err.message : "Не удалось присоединиться к событию." });
     }
   }
 
@@ -97,7 +114,9 @@ function App() {
   return (
     <ProfileScreen
       character={state.character}
+      activeEvent={activeEvent}
       onStartBattle={() => handleStartBattle(state.character)}
+      onJoinEvent={() => handleJoinEvent(state.character)}
       onOpenShop={() => setState({ status: "shop", character: state.character })}
       onOpenInventory={() => setState({ status: "inventory", character: state.character })}
     />

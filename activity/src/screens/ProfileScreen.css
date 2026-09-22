@@ -16,6 +16,30 @@
   opacity: 0.85;
 }
 
+.profile__event {
+  margin-top: 16px;
+  background: #3a2a1a;
+  border: 1px solid #f0a020;
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.profile__event p {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.profile__event-button {
+  background: #f0a020;
+  color: #1e1f22;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .profile__actions {
   display: flex;
   gap: 10px;

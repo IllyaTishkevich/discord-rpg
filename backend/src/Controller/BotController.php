@@ -2,11 +2,15 @@
 
 namespace App\Controller;
 
+use App\Entity\Battle;
 use App\Enum\BattleStatus;
 use App\Exception\BattleAlreadyFinishedException;
 use App\Exception\InsufficientEnergyException;
+use App\Repository\EventRepository;
 use App\Repository\UserRepository;
+use App\Serializer\BattleSerializer;
 use App\Service\BattleService;
+use App\Service\EventService;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -28,6 +32,7 @@ class BotController extends AbstractApiController
     public function __construct(
         #[Autowire(env: 'BOT_API_SECRET')] private readonly string $botApiSecret,
         private readonly UserRepository $userRepository,
+        private readonly BattleSerializer $serializer,
     ) {
     }
 
@@ -81,38 +86,73 @@ class BotController extends AbstractApiController
             return $this->json(['error' => 'Not enough energy to start a battle.'], 409);
         }
 
-        $rounds = [];
-        for ($i = 0; $i < self::MAX_AUTO_ROUNDS && BattleStatus::InProgress === $battle->getStatus(); ++$i) {
+        $roundsPlayed = $this->playToCompletion($battle, $battleService);
+
+        return $this->json(['roundsPlayed' => $roundsPlayed, ...$this->serializer->battle($battle)]);
+    }
+
+    /**
+     * Admin-triggered: starts a new "monster attack" server event. The bot
+     * command calling this is expected to be permission-gated on the Discord
+     * side (e.g. ManageGuild) since there's no admin-role system here.
+     */
+    #[Route('/events/monster-attack', name: 'bot_event_start_monster_attack', methods: ['POST'])]
+    public function startMonsterAttackEvent(Request $request, EventService $eventService): JsonResponse
+    {
+        if ($forbidden = $this->checkSecret($request)) {
+            return $forbidden;
+        }
+
+        $event = $eventService->startMonsterAttack();
+
+        return $this->json([
+            'monsterName' => $event->getMonsterName(),
+            'monsterHp' => $event->getMonsterHp(),
+            'endsAt' => $event->getEndsAt()->format(\DateTimeInterface::ATOM),
+        ], 201);
+    }
+
+    /**
+     * Text-only equivalent of the Activity's event arena: plays the current
+     * event battle to completion with no action-flip choices.
+     */
+    #[Route('/events/active/battle/auto/{discordId}', name: 'bot_event_battle_auto', methods: ['POST'])]
+    public function autoEventBattle(string $discordId, Request $request, EventRepository $eventRepository, BattleService $battleService): JsonResponse
+    {
+        if ($forbidden = $this->checkSecret($request)) {
+            return $forbidden;
+        }
+
+        $character = $this->userRepository->findOneByDiscordId($discordId)?->getCharacter();
+        if (null === $character) {
+            return $this->json(['error' => 'No character for this user yet.'], 404);
+        }
+
+        $event = $eventRepository->findCurrentlyActive();
+        if (null === $event) {
+            return $this->json(['error' => 'No active event right now.'], 404);
+        }
+
+        $battle = $battleService->startEventBattle($character, $event);
+        $roundsPlayed = $this->playToCompletion($battle, $battleService);
+
+        return $this->json(['roundsPlayed' => $roundsPlayed, ...$this->serializer->battle($battle)]);
+    }
+
+    private function playToCompletion(Battle $battle, BattleService $battleService): int
+    {
+        $roundsPlayed = 0;
+        for (; $roundsPlayed < self::MAX_AUTO_ROUNDS && BattleStatus::InProgress === $battle->getStatus(); ++$roundsPlayed) {
             $battleService->throwRound($battle);
 
             try {
-                $round = $battleService->resolveRound($battle, []);
+                $battleService->resolveRound($battle, []);
             } catch (BattleAlreadyFinishedException) {
                 break;
             }
-
-            $rounds[] = [
-                'damageToOpponent' => $round->getDamageToOpponent(),
-                'damageToPlayer' => $round->getDamageToPlayer(),
-            ];
         }
 
-        return $this->json([
-            'status' => $battle->getStatus()->value,
-            'roundsPlayed' => \count($rounds),
-            'opponent' => [
-                'name' => $battle->getOpponentName(),
-                'hp' => $battle->getOpponentHp(),
-                'maxHp' => $battle->getOpponentMaxHp(),
-            ],
-            'character' => [
-                'hp' => $character->getHp(),
-                'maxHp' => $character->getMaxHp(),
-            ],
-            'rewards' => BattleStatus::Won === $battle->getStatus()
-                ? ['xp' => BattleService::XP_REWARD, 'coins' => BattleService::COIN_REWARD]
-                : null,
-        ]);
+        return $roundsPlayed;
     }
 
     private function checkSecret(Request $request): ?JsonResponse

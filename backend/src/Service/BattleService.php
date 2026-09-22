@@ -9,6 +9,7 @@ use App\Entity\Battle;
 use App\Entity\BattleRound;
 use App\Entity\Bit;
 use App\Entity\Character;
+use App\Entity\Event;
 use App\Enum\BattleStatus;
 use App\Enum\BitFace;
 use App\Exception\BattleAlreadyFinishedException;
@@ -38,6 +39,8 @@ class BattleService
     ];
     public const XP_REWARD = 10;
     public const COIN_REWARD = 5;
+    public const EVENT_XP_REWARD = 20;
+    public const EVENT_COIN_REWARD = 15;
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -55,6 +58,21 @@ class BattleService
         $character->setEnergy($character->getEnergy() - 1);
 
         $battle = new Battle($character, self::MONSTER_NAME, self::MONSTER_HP);
+        $this->entityManager->persist($battle);
+        $this->entityManager->flush();
+
+        return $battle;
+    }
+
+    /**
+     * Event battles don't cost energy and pay out bigger rewards — fighting
+     * the event's monster is meant to be something anyone online can jump
+     * into without it competing with their daily PvE energy budget.
+     */
+    public function startEventBattle(Character $character, Event $event): Battle
+    {
+        $battle = new Battle($character, $event->getMonsterName(), $event->getMonsterHp());
+        $battle->setEvent($event);
         $this->entityManager->persist($battle);
         $this->entityManager->flush();
 
@@ -128,8 +146,9 @@ class BattleService
     {
         if ($battle->getOpponentHp() <= 0) {
             $battle->setStatus(BattleStatus::Won);
-            $character->addXp(self::XP_REWARD);
-            $character->addCoins(self::COIN_REWARD);
+            $isEvent = null !== $battle->getEvent();
+            $character->addXp($isEvent ? self::EVENT_XP_REWARD : self::XP_REWARD);
+            $character->addCoins($isEvent ? self::EVENT_COIN_REWARD : self::COIN_REWARD);
         } elseif ($character->getHp() <= 0) {
             $battle->setStatus(BattleStatus::Lost);
         }

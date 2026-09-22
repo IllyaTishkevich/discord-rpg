@@ -1,15 +1,18 @@
 import { StatBar } from "../components/StatBar";
 import type { Character } from "../types/character";
+import type { ActiveEvent } from "../types/event";
 import "./ProfileScreen.css";
 
 interface Props {
   character: Character;
+  activeEvent: ActiveEvent | null;
   onStartBattle: () => void;
+  onJoinEvent: () => void;
   onOpenShop: () => void;
   onOpenInventory: () => void;
 }
 
-export function ProfileScreen({ character, onStartBattle, onOpenShop, onOpenInventory }: Props) {
+export function ProfileScreen({ character, activeEvent, onStartBattle, onJoinEvent, onOpenShop, onOpenInventory }: Props) {
   const canFight = character.energy > 0;
 
   return (
@@ -22,6 +25,18 @@ export function ProfileScreen({ character, onStartBattle, onOpenShop, onOpenInve
         <span>XP: {character.xp}</span>
         <span>Монеты: {character.coins}</span>
       </div>
+
+      {activeEvent && (
+        <div className="profile__event">
+          <p>
+            🐉 Событие: <strong>{activeEvent.monsterName}</strong> напал на сервер!
+          </p>
+          <button className="profile__event-button" onClick={onJoinEvent}>
+            Присоединиться (бесплатно)
+          </button>
+        </div>
+      )}
+
       <div className="profile__actions">
         <button className="profile__fight" disabled={!canFight} onClick={onStartBattle}>
           {canFight ? "В бой" : "Нет энергии"}
