@@ -16,6 +16,7 @@
 2. На вкладке **OAuth2 → General** скопировать:
    - **Application ID** → это `DISCORD_CLIENT_ID` (backend `.env.local`) и `VITE_DISCORD_CLIENT_ID` (activity `.env.local`).
    - **Client Secret** (кнопка "Reset Secret", если ещё не генерировался) → `DISCORD_CLIENT_SECRET` (backend).
+3. Там же, в разделе **Redirects**, добавить хотя бы один redirect URI — например, ваш продакшен-домен (`https://discord-rpg.example.com`). Сам URL для флоу Activity реально не используется (SDK получает `code` без видимого редиректа), но Discord всё равно требует, чтобы у приложения был зарегистрирован хотя бы один redirect — без него `discordSdk.commands.authorize()` в Activity падает с ошибкой `OAuth2 Error: invalid_request: Missing "redirect_uri" in request. (code 5000)`.
 
 ### A.2. Включить Activities и настроить URL Mapping
 
