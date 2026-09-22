@@ -10,9 +10,20 @@ interface Props {
   onJoinEvent: () => void;
   onOpenShop: () => void;
   onOpenInventory: () => void;
+  onOpenTournament: () => void;
+  onOpenQuest: () => void;
 }
 
-export function ProfileScreen({ character, activeEvent, onStartBattle, onJoinEvent, onOpenShop, onOpenInventory }: Props) {
+export function ProfileScreen({
+  character,
+  activeEvent,
+  onStartBattle,
+  onJoinEvent,
+  onOpenShop,
+  onOpenInventory,
+  onOpenTournament,
+  onOpenQuest,
+}: Props) {
   const canFight = character.energy > 0;
 
   return (
@@ -46,6 +57,12 @@ export function ProfileScreen({ character, activeEvent, onStartBattle, onJoinEve
         </button>
         <button className="profile__secondary" onClick={onOpenInventory}>
           Инвентарь
+        </button>
+        <button className="profile__secondary" onClick={onOpenTournament}>
+          Турнир
+        </button>
+        <button className="profile__secondary" onClick={onOpenQuest}>
+          Задания
         </button>
       </div>
     </div>

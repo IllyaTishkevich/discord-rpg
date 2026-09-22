@@ -10,6 +10,8 @@ import { ClassSelectScreen } from "./screens/ClassSelectScreen";
 import { InventoryScreen } from "./screens/InventoryScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { ShopScreen } from "./screens/ShopScreen";
+import { TournamentScreen } from "./screens/TournamentScreen";
+import { WeeklyQuestScreen } from "./screens/WeeklyQuestScreen";
 import type { BattleState } from "./types/battle";
 import type { Character } from "./types/character";
 import type { ActiveEvent } from "./types/event";
@@ -21,6 +23,8 @@ type LoadState =
   | { status: "profile"; character: Character }
   | { status: "shop"; character: Character }
   | { status: "inventory"; character: Character }
+  | { status: "tournament"; character: Character }
+  | { status: "quest"; character: Character }
   | { status: "arena"; character: Character; battle: BattleState }
   | { status: "battle-result"; character: Character; battle: BattleState }
   | { status: "error"; message: string };
@@ -111,6 +115,14 @@ function App() {
     return <InventoryScreen onBack={() => setState({ status: "profile", character: state.character })} />;
   }
 
+  if (state.status === "tournament") {
+    return <TournamentScreen onBack={() => setState({ status: "profile", character: state.character })} />;
+  }
+
+  if (state.status === "quest") {
+    return <WeeklyQuestScreen onBack={() => setState({ status: "profile", character: state.character })} />;
+  }
+
   return (
     <ProfileScreen
       character={state.character}
@@ -119,6 +131,8 @@ function App() {
       onJoinEvent={() => handleJoinEvent(state.character)}
       onOpenShop={() => setState({ status: "shop", character: state.character })}
       onOpenInventory={() => setState({ status: "inventory", character: state.character })}
+      onOpenTournament={() => setState({ status: "tournament", character: state.character })}
+      onOpenQuest={() => setState({ status: "quest", character: state.character })}
     />
   );
 }

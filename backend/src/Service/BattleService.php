@@ -46,6 +46,7 @@ class BattleService
         private readonly EntityManagerInterface $entityManager,
         private readonly BitRepository $bitRepository,
         private readonly CombatResolver $combatResolver,
+        private readonly QuestService $questService,
     ) {
     }
 
@@ -149,6 +150,7 @@ class BattleService
             $isEvent = null !== $battle->getEvent();
             $character->addXp($isEvent ? self::EVENT_XP_REWARD : self::XP_REWARD);
             $character->addCoins($isEvent ? self::EVENT_COIN_REWARD : self::COIN_REWARD);
+            $this->questService->recordBattleWin($character);
         } elseif ($character->getHp() <= 0) {
             $battle->setStatus(BattleStatus::Lost);
         }

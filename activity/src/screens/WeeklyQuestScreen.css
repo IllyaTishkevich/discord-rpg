@@ -1,0 +1,44 @@
+.quest {
+  padding: 24px;
+  color: #fff;
+}
+
+.quest__reward {
+  font-size: 14px;
+  opacity: 0.85;
+  margin-top: 12px;
+}
+
+.quest__claim {
+  margin-top: 16px;
+  background: #23a55a;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.quest__claim:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quest__claimed {
+  color: #23a55a;
+}
+
+.quest__back {
+  margin-top: 20px;
+  background: transparent;
+  color: #fff;
+  border: 1px solid #4e5058;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.quest__error {
+  color: #f23f42;
+}

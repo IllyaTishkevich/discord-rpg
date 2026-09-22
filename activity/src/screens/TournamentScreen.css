@@ -1,0 +1,53 @@
+.tournament {
+  padding: 24px;
+  color: #fff;
+}
+
+.tournament__join {
+  margin-top: 12px;
+  background: #5865f2;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.tournament__join:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tournament__champion {
+  font-size: 18px;
+  margin-bottom: 16px;
+}
+
+.tournament__round h2 {
+  font-size: 15px;
+  opacity: 0.7;
+  margin: 16px 0 8px;
+}
+
+.tournament__match {
+  background: #2b2d31;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.tournament__back {
+  margin-top: 20px;
+  background: transparent;
+  color: #fff;
+  border: 1px solid #4e5058;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.tournament__error {
+  color: #f23f42;
+}

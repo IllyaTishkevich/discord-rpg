@@ -8,21 +8,18 @@ use App\Exception\BattleAlreadyFinishedException;
 use App\Exception\InsufficientEnergyException;
 use App\Repository\EventRepository;
 use App\Repository\UserRepository;
+use App\Repository\WeeklyQuestRepository;
 use App\Serializer\BattleSerializer;
 use App\Service\BattleService;
 use App\Service\EventService;
+use App\Service\QuestService;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
 
-/**
- * Service-to-service endpoints used by the Discord bot process, authenticated
- * with a shared secret (BOT_API_SECRET) instead of end-user JWTs — the bot
- * already knows which Discord user it's acting for.
- */
 #[Route('/api/bot')]
-class BotController extends AbstractApiController
+class BotController extends AbstractBotController
 {
     // Safety cap: with the current 3-bit starter loadouts, a round almost
     // always deals damage on one side, but 0-0 draws are possible, so an
@@ -30,10 +27,11 @@ class BotController extends AbstractApiController
     private const MAX_AUTO_ROUNDS = 30;
 
     public function __construct(
-        #[Autowire(env: 'BOT_API_SECRET')] private readonly string $botApiSecret,
+        #[Autowire(env: 'BOT_API_SECRET')] string $botApiSecret,
         private readonly UserRepository $userRepository,
         private readonly BattleSerializer $serializer,
     ) {
+        parent::__construct($botApiSecret);
     }
 
     #[Route('/characters/{discordId}', name: 'bot_character_profile', methods: ['GET'])]
@@ -60,6 +58,35 @@ class BotController extends AbstractApiController
             'level' => $character->getLevel(),
             'xp' => $character->getXp(),
             'coins' => $character->getCoins(),
+        ]);
+    }
+
+    #[Route('/quests/{discordId}', name: 'bot_quest_current', methods: ['GET'])]
+    public function quest(string $discordId, Request $request, WeeklyQuestRepository $weeklyQuestRepository, QuestService $questService): JsonResponse
+    {
+        if ($forbidden = $this->checkSecret($request)) {
+            return $forbidden;
+        }
+
+        $character = $this->userRepository->findOneByDiscordId($discordId)?->getCharacter();
+        if (null === $character) {
+            return $this->json(['error' => 'No character for this user yet.'], 404);
+        }
+
+        $quest = $weeklyQuestRepository->findCurrent();
+        if (null === $quest) {
+            return $this->json(null);
+        }
+
+        $progress = $questService->getOrCreateProgress($character, $quest);
+
+        return $this->json([
+            'targetValue' => $quest->getTargetValue(),
+            'rewardXp' => $quest->getRewardXp(),
+            'rewardCoins' => $quest->getRewardCoins(),
+            'progress' => $progress->getProgress(),
+            'isComplete' => $progress->isComplete(),
+            'isClaimed' => $progress->isClaimed(),
         ]);
     }
 
@@ -153,14 +180,5 @@ class BotController extends AbstractApiController
         }
 
         return $roundsPlayed;
-    }
-
-    private function checkSecret(Request $request): ?JsonResponse
-    {
-        if (!hash_equals($this->botApiSecret, (string) $request->headers->get('X-Bot-Secret'))) {
-            return $this->json(['error' => 'Forbidden'], 403);
-        }
-
-        return null;
     }
 }
