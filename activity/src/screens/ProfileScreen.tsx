@@ -5,9 +5,11 @@ import "./ProfileScreen.css";
 interface Props {
   character: Character;
   onStartBattle: () => void;
+  onOpenShop: () => void;
+  onOpenInventory: () => void;
 }
 
-export function ProfileScreen({ character, onStartBattle }: Props) {
+export function ProfileScreen({ character, onStartBattle, onOpenShop, onOpenInventory }: Props) {
   const canFight = character.energy > 0;
 
   return (
@@ -20,9 +22,17 @@ export function ProfileScreen({ character, onStartBattle }: Props) {
         <span>XP: {character.xp}</span>
         <span>Монеты: {character.coins}</span>
       </div>
-      <button className="profile__fight" disabled={!canFight} onClick={onStartBattle}>
-        {canFight ? "В бой" : "Нет энергии"}
-      </button>
+      <div className="profile__actions">
+        <button className="profile__fight" disabled={!canFight} onClick={onStartBattle}>
+          {canFight ? "В бой" : "Нет энергии"}
+        </button>
+        <button className="profile__secondary" onClick={onOpenShop}>
+          Магазин
+        </button>
+        <button className="profile__secondary" onClick={onOpenInventory}>
+          Инвентарь
+        </button>
+      </div>
     </div>
   );
 }

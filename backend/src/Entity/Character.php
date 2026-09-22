@@ -88,6 +88,18 @@ class Character
         return $this->maxHp;
     }
 
+    /**
+     * Permanently raises the HP cap (e.g. from equipment) and heals by the
+     * same amount, matching how "+max HP" items conventionally work.
+     */
+    public function increaseMaxHp(int $amount): static
+    {
+        $this->maxHp += $amount;
+        $this->hp += $amount;
+
+        return $this;
+    }
+
     public function getEnergy(): int
     {
         return $this->energy;
@@ -132,6 +144,17 @@ class Character
         $this->coins += $amount;
 
         return $this;
+    }
+
+    public function trySpendCoins(int $amount): bool
+    {
+        if ($this->coins < $amount) {
+            return false;
+        }
+
+        $this->coins -= $amount;
+
+        return true;
     }
 
     public function getCreatedAt(): \DateTimeImmutable

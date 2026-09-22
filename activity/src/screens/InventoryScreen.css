@@ -1,0 +1,42 @@
+.inventory {
+  padding: 24px;
+  color: #fff;
+}
+
+.inventory__list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.inventory__item {
+  background: #2b2d31;
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.inventory__item h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.inventory__item p {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.inventory__back {
+  margin-top: 20px;
+  background: transparent;
+  color: #fff;
+  border: 1px solid #4e5058;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.inventory__error {
+  color: #f23f42;
+}

@@ -6,7 +6,9 @@ import { authenticateWithDiscord } from "./discord/sdk";
 import { ArenaScreen } from "./screens/ArenaScreen";
 import { BattleResultScreen } from "./screens/BattleResultScreen";
 import { ClassSelectScreen } from "./screens/ClassSelectScreen";
+import { InventoryScreen } from "./screens/InventoryScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
+import { ShopScreen } from "./screens/ShopScreen";
 import type { BattleState } from "./types/battle";
 import type { Character } from "./types/character";
 
@@ -15,6 +17,8 @@ type LoadState =
   | { status: "not-embedded" }
   | { status: "no-character" }
   | { status: "profile"; character: Character }
+  | { status: "shop"; character: Character }
+  | { status: "inventory"; character: Character }
   | { status: "arena"; character: Character; battle: BattleState }
   | { status: "battle-result"; character: Character; battle: BattleState }
   | { status: "error"; message: string };
@@ -82,7 +86,22 @@ function App() {
     return <BattleResultScreen battle={state.battle} onContinue={() => setState({ status: "profile", character: state.character })} />;
   }
 
-  return <ProfileScreen character={state.character} onStartBattle={() => handleStartBattle(state.character)} />;
+  if (state.status === "shop") {
+    return <ShopScreen character={state.character} onBack={(character) => setState({ status: "profile", character })} />;
+  }
+
+  if (state.status === "inventory") {
+    return <InventoryScreen onBack={() => setState({ status: "profile", character: state.character })} />;
+  }
+
+  return (
+    <ProfileScreen
+      character={state.character}
+      onStartBattle={() => handleStartBattle(state.character)}
+      onOpenShop={() => setState({ status: "shop", character: state.character })}
+      onOpenInventory={() => setState({ status: "inventory", character: state.character })}
+    />
+  );
 }
 
 export default App;
