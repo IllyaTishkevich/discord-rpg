@@ -16,21 +16,26 @@ final class CombatResolver
     /**
      * @param BitThrow[] $playerThrows
      * @param BitThrow[] $opponentThrows
-     * @param int[]      $playerActionTargets indices into $opponentThrows the player chooses to flip;
-     *                                        capped at however many "action" faces the player actually rolled
+     * @param int[]      $playerActionTargets   indices into $opponentThrows the player chooses to flip;
+     *                                          capped at however many "action" faces the player actually rolled
+     * @param int[]|null $opponentActionTargets indices into $playerThrows the opponent chooses to flip — used for
+     *                                          PvP, where the "opponent" is a real second player, not the bot.
+     *                                          Null (the PvE/event default) falls back to BotActionStrategy.
      */
-    public function resolveRound(array $playerThrows, array $opponentThrows, array $playerActionTargets): RoundResult
+    public function resolveRound(array $playerThrows, array $opponentThrows, array $playerActionTargets, ?array $opponentActionTargets = null): RoundResult
     {
         $playerActionCount = $this->countThrownFace($playerThrows, BitFace::Action);
         $opponentActionCount = $this->countThrownFace($opponentThrows, BitFace::Action);
 
         $opponentThrows = $this->applyFlips($opponentThrows, \array_slice(array_values($playerActionTargets), 0, $playerActionCount));
 
-        $botTargets = BotActionStrategy::chooseTargets(
-            array_map(static fn (BitThrow $t) => $t->thrownFace, $playerThrows),
-            $opponentActionCount,
-        );
-        $playerThrows = $this->applyFlips($playerThrows, $botTargets);
+        $opponentTargets = null !== $opponentActionTargets
+            ? \array_slice(array_values($opponentActionTargets), 0, $opponentActionCount)
+            : BotActionStrategy::chooseTargets(
+                array_map(static fn (BitThrow $t) => $t->thrownFace, $playerThrows),
+                $opponentActionCount,
+            );
+        $playerThrows = $this->applyFlips($playerThrows, $opponentTargets);
 
         $playerFaces = array_map(static fn (BitThrow $t) => $t->thrownFace, $playerThrows);
         $opponentFaces = array_map(static fn (BitThrow $t) => $t->thrownFace, $opponentThrows);

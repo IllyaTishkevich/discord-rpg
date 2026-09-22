@@ -29,11 +29,13 @@ class BattleCrudController extends AbstractCrudController
     public function configureFields(string $pageName): iterable
     {
         yield IdField::new('id');
+        yield ChoiceField::new('mode', 'Режим');
         yield AssociationField::new('character', 'Персонаж');
+        yield AssociationField::new('opponentCharacter', 'Соперник (PvP)')->hideOnIndex();
         yield AssociationField::new('event', 'Событие')->hideOnIndex();
-        yield TextField::new('opponentName', 'Противник');
-        yield IntegerField::new('opponentHp', 'HP противника');
-        yield IntegerField::new('opponentMaxHp', 'Макс. HP противника')->hideOnIndex();
+        yield TextField::new('opponentName', 'Противник (PvE/ивент)')->hideOnIndex();
+        yield IntegerField::new('opponentHp', 'HP противника (PvE/ивент)')->hideOnIndex();
+        yield IntegerField::new('opponentMaxHp', 'Макс. HP противника (PvE/ивент)')->hideOnIndex();
         yield ChoiceField::new('status', 'Статус');
         yield IntegerField::new('roundNumber', 'Раунд');
         yield DateTimeField::new('createdAt', 'Начат');

@@ -127,4 +127,56 @@ class CombatResolverTest extends TestCase
         self::assertSame(BitFace::Action, $result->playerFaces[0]);
         self::assertSame(0, $result->damageToPlayer);
     }
+
+    public function testExplicitOpponentActionTargetsAreUsedInsteadOfBotStrategy(): void
+    {
+        // BotActionStrategy would flip the "attack" face first (survival
+        // priority) — but an explicit PvP opponent choice should override
+        // that and flip the "defense" face instead.
+        $playerBitA = new BitThrow(BitFace::Attack, BitFace::Defense, BitFace::Attack);
+        $playerBitB = new BitThrow(BitFace::Defense, BitFace::Attack, BitFace::Defense);
+
+        $result = $this->resolver->resolveRound(
+            playerThrows: [$playerBitA, $playerBitB],
+            opponentThrows: [$this->fixed(BitFace::Action)],
+            playerActionTargets: [],
+            opponentActionTargets: [1],
+        );
+
+        self::assertSame(BitFace::Attack, $result->playerFaces[0]);
+        self::assertSame(BitFace::Attack, $result->playerFaces[1]);
+    }
+
+    public function testExplicitOpponentActionTargetsAreCappedByRolledActionCount(): void
+    {
+        $playerBitA = new BitThrow(BitFace::Defense, BitFace::Attack, BitFace::Defense);
+        $playerBitB = new BitThrow(BitFace::Defense, BitFace::Attack, BitFace::Defense);
+
+        $result = $this->resolver->resolveRound(
+            playerThrows: [$playerBitA, $playerBitB],
+            // Only one "action" face rolled for the opponent, but two targets requested.
+            opponentThrows: [$this->fixed(BitFace::Action)],
+            playerActionTargets: [],
+            opponentActionTargets: [0, 1],
+        );
+
+        self::assertSame(BitFace::Attack, $result->playerFaces[0]);
+        self::assertSame(BitFace::Defense, $result->playerFaces[1]);
+    }
+
+    public function testEmptyOpponentActionTargetsMeansNoFlipsEvenWithActionFacesRolled(): void
+    {
+        // An explicit empty array (a real PvP player choosing not to flip
+        // anything) must NOT fall back to BotActionStrategy.
+        $playerBit = new BitThrow(BitFace::Attack, BitFace::Action, BitFace::Attack);
+
+        $result = $this->resolver->resolveRound(
+            playerThrows: [$playerBit],
+            opponentThrows: [$this->fixed(BitFace::Action)],
+            playerActionTargets: [],
+            opponentActionTargets: [],
+        );
+
+        self::assertSame(BitFace::Attack, $result->playerFaces[0]);
+    }
 }
