@@ -3,6 +3,8 @@
 namespace App\Entity;
 
 use App\Repository\CharacterRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: CharacterRepository::class)]
@@ -20,6 +22,17 @@ class Character
     #[ORM\ManyToOne(targetEntity: CharacterClass::class)]
     #[ORM\JoinColumn(nullable: false)]
     private CharacterClass $characterClass;
+
+    /**
+     * Bits bought individually via the shop (EquipmentService::purchase()),
+     * on top of whatever the class provides — unidirectional, Bit has no
+     * inverse property. See getAllBits() for the full battle loadout.
+     *
+     * @var Collection<int, Bit>
+     */
+    #[ORM\ManyToMany(targetEntity: Bit::class)]
+    #[ORM\JoinTable(name: 'character_bit')]
+    private Collection $purchasedBits;
 
     #[ORM\Column]
     private int $hp;
@@ -54,6 +67,7 @@ class Character
         $this->maxEnergy = $characterClass->getBaseEnergy();
         $this->energy = $this->maxEnergy;
         $this->createdAt = new \DateTimeImmutable();
+        $this->purchasedBits = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -69,6 +83,41 @@ class Character
     public function getCharacterClass(): CharacterClass
     {
         return $this->characterClass;
+    }
+
+    /**
+     * @return Collection<int, Bit>
+     */
+    public function getPurchasedBits(): Collection
+    {
+        return $this->purchasedBits;
+    }
+
+    public function addPurchasedBit(Bit $bit): static
+    {
+        if (!$this->purchasedBits->contains($bit)) {
+            $this->purchasedBits->add($bit);
+        }
+
+        return $this;
+    }
+
+    public function removePurchasedBit(Bit $bit): static
+    {
+        $this->purchasedBits->removeElement($bit);
+
+        return $this;
+    }
+
+    /**
+     * The full set of bits this character throws every round: its class's
+     * bits plus whatever it bought individually.
+     *
+     * @return Bit[]
+     */
+    public function getAllBits(): array
+    {
+        return [...$this->characterClass->getStarterBits(), ...$this->purchasedBits];
     }
 
     public function getHp(): int

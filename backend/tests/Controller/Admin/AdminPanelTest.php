@@ -173,7 +173,7 @@ class AdminPanelTest extends WebTestCase
             $class = new CharacterClass('test_fixture_class', 'Fixture Class', 20, 10);
             $em->persist($class);
 
-            $templateBit = new Bit(null, BitFace::Attack, BitFace::Defense);
+            $templateBit = new Bit(BitFace::Attack, BitFace::Defense);
             $em->persist($templateBit);
             $class->addStarterBit($templateBit);
         }

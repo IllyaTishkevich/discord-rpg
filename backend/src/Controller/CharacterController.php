@@ -5,7 +5,6 @@ namespace App\Controller;
 use App\Entity\Bit;
 use App\Entity\Character;
 use App\Entity\User;
-use App\Repository\BitRepository;
 use App\Repository\CharacterClassRepository;
 use App\Repository\CharacterRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -38,23 +37,9 @@ class CharacterController extends AbstractApiController
         $character = new Character($user, $characterClass);
         $user->setCharacter($character);
         $entityManager->persist($character);
-
-        $bits = [];
-        foreach ($characterClass->getStarterBits() as $starterBitTemplate) {
-            $bit = new Bit(
-                $character,
-                $starterBitTemplate->getFaceA(),
-                $starterBitTemplate->getFaceB(),
-                $starterBitTemplate->hasAdvantageA(),
-                $starterBitTemplate->hasAdvantageB(),
-            );
-            $entityManager->persist($bit);
-            $bits[] = $bit;
-        }
-
         $entityManager->flush();
 
-        return $this->json($this->serializeCharacter($character, $bits), 201);
+        return $this->json($this->serializeCharacter($character), 201);
     }
 
     #[Route('/leaderboard', name: 'character_leaderboard', methods: ['GET'])]
@@ -74,7 +59,7 @@ class CharacterController extends AbstractApiController
     }
 
     #[Route('/me', name: 'character_me', methods: ['GET'])]
-    public function me(BitRepository $bitRepository): JsonResponse
+    public function me(): JsonResponse
     {
         /** @var User $user */
         $user = $this->getUser();
@@ -84,13 +69,10 @@ class CharacterController extends AbstractApiController
             return $this->json(['error' => 'No character for this user yet.'], 404);
         }
 
-        return $this->json($this->serializeCharacter($character, $bitRepository->findByCharacter($character)));
+        return $this->json($this->serializeCharacter($character));
     }
 
-    /**
-     * @param Bit[] $bits
-     */
-    private function serializeCharacter(Character $character, array $bits = []): array
+    private function serializeCharacter(Character $character): array
     {
         return [
             'id' => $character->getId(),
@@ -107,7 +89,7 @@ class CharacterController extends AbstractApiController
             'coins' => $character->getCoins(),
             'bits' => array_map(
                 static fn (Bit $bit) => ['faceA' => $bit->getFaceA()->value, 'faceB' => $bit->getFaceB()->value],
-                $bits,
+                $character->getAllBits(),
             ),
         ];
     }

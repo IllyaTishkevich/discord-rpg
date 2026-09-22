@@ -11,11 +11,13 @@ use Doctrine\ORM\Mapping as ORM;
  * Reference entity describing a playable class: base stats and the starter
  * set of bits every new character of this class receives.
  *
- * `starterBits` is a many-to-many association to reusable `Bit` template
- * rows (a template Bit has `character === null` — see Bit's docblock).
- * Character creation copies each one into a fresh owned Bit for the new
- * character (CharacterController::create()) — editing this list later
- * doesn't retroactively change existing characters.
+ * `starterBits` is a many-to-many association to `Bit` rows — a
+ * unidirectional relation (Bit itself holds no reference back, see its
+ * docblock). Every character of this class throws exactly these bits each
+ * round, plus whatever it bought individually (Character::$purchasedBits) —
+ * see Character::getAllBits(). Nothing is copied per-character: editing
+ * this list changes every current and future character of the class
+ * immediately.
  */
 #[ORM\Entity(repositoryClass: CharacterClassRepository::class)]
 class CharacterClass
@@ -41,11 +43,12 @@ class CharacterClass
     private int $baseEnergy;
 
     /**
-     * Inverse side of Bit::$characterClasses.
+     * Owning side — unidirectional, Bit has no inverse property.
      *
      * @var Collection<int, Bit>
      */
-    #[ORM\ManyToMany(targetEntity: Bit::class, mappedBy: 'characterClasses')]
+    #[ORM\ManyToMany(targetEntity: Bit::class)]
+    #[ORM\JoinTable(name: 'character_class_bit')]
     private Collection $starterBits;
 
     #[ORM\OneToMany(mappedBy: 'characterClass', targetEntity: Character::class)]
@@ -138,7 +141,6 @@ class CharacterClass
     {
         if (!$this->starterBits->contains($bit)) {
             $this->starterBits->add($bit);
-            $bit->addCharacterClass($this);
         }
 
         return $this;
@@ -146,9 +148,7 @@ class CharacterClass
 
     public function removeStarterBit(Bit $bit): static
     {
-        if ($this->starterBits->removeElement($bit)) {
-            $bit->removeCharacterClass($this);
-        }
+        $this->starterBits->removeElement($bit);
 
         return $this;
     }

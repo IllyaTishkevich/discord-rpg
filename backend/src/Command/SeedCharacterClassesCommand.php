@@ -87,7 +87,6 @@ class SeedCharacterClassesCommand extends Command
 
             foreach ($definition['starterBits'] as $bitDefinition) {
                 $templateBit = new Bit(
-                    null,
                     BitFace::from($bitDefinition['faceA']),
                     BitFace::from($bitDefinition['faceB']),
                     $bitDefinition['advantageA'] ?? false,

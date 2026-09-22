@@ -12,7 +12,6 @@ use App\Entity\TournamentMatch;
 use App\Enum\TournamentStatus;
 use App\Exception\AlreadyRegisteredException;
 use App\Exception\NotEnoughEntriesException;
-use App\Repository\BitRepository;
 use App\Repository\TournamentEntryRepository;
 use App\Repository\TournamentRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -33,7 +32,6 @@ class TournamentService
         private readonly EntityManagerInterface $entityManager,
         private readonly TournamentRepository $tournamentRepository,
         private readonly TournamentEntryRepository $entryRepository,
-        private readonly BitRepository $bitRepository,
         private readonly ExchangeResolver $exchangeResolver,
     ) {
     }
@@ -120,8 +118,8 @@ class TournamentService
      */
     private function simulateMatch(Character $a, Character $b): Character
     {
-        $aBits = $this->bitRepository->findByCharacter($a);
-        $bBits = $this->bitRepository->findByCharacter($b);
+        $aBits = $a->getAllBits();
+        $bBits = $b->getAllBits();
         $aHp = $a->getMaxHp();
         $bHp = $b->getMaxHp();
 

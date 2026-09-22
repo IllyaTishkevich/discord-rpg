@@ -13,9 +13,9 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 class CharacterCrudController extends AbstractCrudController
 {
     // Character has no setUser()/setCharacterClass() — identity fields set
-    // once at creation (via CharacterController, which also seeds starter
-    // Bits). Creating one from the admin panel would skip that entirely, so
-    // only editing stats on an existing character is exposed.
+    // once at creation (via CharacterController). Creating one from the
+    // admin panel would skip that entirely, so only editing stats on an
+    // existing character is exposed.
     use NoCreateCrudTrait;
 
     public static function getEntityFqcn(): string
@@ -40,6 +40,7 @@ class CharacterCrudController extends AbstractCrudController
         yield IntegerField::new('level', 'Уровень');
         yield IntegerField::new('xp', 'XP');
         yield IntegerField::new('coins', 'Монеты');
+        yield AssociationField::new('purchasedBits', 'Купленные биты')->hideOnIndex();
         yield DateTimeField::new('createdAt', 'Создан')->hideOnForm();
     }
 }

@@ -22,7 +22,6 @@ use App\Exception\InsufficientEnergyException;
 use App\Exception\InvalidBattleStateException;
 use App\Exception\NoPendingThrowException;
 use App\Exception\NotBattleParticipantException;
-use App\Repository\BitRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -78,7 +77,6 @@ class BattleService
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly BitRepository $bitRepository,
         private readonly CombatResolver $combatResolver,
         private readonly ExchangeResolver $exchangeResolver,
         private readonly AbilityResolver $abilityResolver,
@@ -265,12 +263,12 @@ class BattleService
 
         $playerThrows = array_map(
             static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()),
-            $this->bitRepository->findByCharacter($battle->getCharacter()),
+            $battle->getCharacter()->getAllBits(),
         );
         $opponentThrows = $battle->isPvp()
             ? array_map(
                 static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()),
-                $this->bitRepository->findByCharacter($battle->getOpponentCharacter()),
+                $battle->getOpponentCharacter()->getAllBits(),
             )
             : array_map(
                 static fn (array $bit) => BitThrow::random($bit[0], $bit[1], $bit[2], $bit[3]),

@@ -23,13 +23,14 @@ class EquipmentService
         }
 
         if (EquipmentEffectType::Bit === $equipment->getEffectType()) {
-            $this->entityManager->persist(new Bit(
-                $character,
+            $bit = new Bit(
                 $equipment->getBitFaceA(),
                 $equipment->getBitFaceB(),
                 $equipment->hasBitAdvantageA(),
                 $equipment->hasBitAdvantageB(),
-            ));
+            );
+            $this->entityManager->persist($bit);
+            $character->addPurchasedBit($bit);
         } else {
             $character->increaseMaxHp($equipment->getHpBonus());
         }
