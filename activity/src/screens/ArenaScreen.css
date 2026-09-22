@@ -44,6 +44,36 @@
   margin: 12px 0;
 }
 
+.arena__abilities {
+  margin: 16px 0;
+}
+
+.arena__ability-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.arena__ability {
+  background: #2b2d31;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.arena__ability--selected {
+  border-color: #5865f2;
+  background: #3a3d8f;
+}
+
+.arena__ability:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .arena__result {
   margin-top: 16px;
 }

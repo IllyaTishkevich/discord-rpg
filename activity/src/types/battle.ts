@@ -1,5 +1,12 @@
 import type { BitFace } from "./character";
 
+export type AbilityType = "flip" | "unblockable_damage" | "reroll" | "damage_mirror";
+
+export interface AbilityChoice {
+  ability: AbilityType;
+  targets: number[];
+}
+
 export interface BattleState {
   id: number;
   mode?: "pve" | "event" | "pvp";

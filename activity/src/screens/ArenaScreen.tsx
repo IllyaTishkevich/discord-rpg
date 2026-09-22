@@ -2,10 +2,30 @@ import { useEffect, useState } from "react";
 import { fetchBattle, fetchLatestRound, resolveRound, submitActions, throwRound } from "../api/battles";
 import { BitCoin } from "../components/BitCoin";
 import { StatBar } from "../components/StatBar";
-import type { BattleState, RoundResult, ThrowResult } from "../types/battle";
+import type { AbilityChoice, AbilityType, BattleState, RoundResult, ThrowResult } from "../types/battle";
 import "./ArenaScreen.css";
 
 type Phase = "idle" | "thrown" | "waiting" | "resolved";
+
+interface AbilityOption {
+  type: AbilityType;
+  label: string;
+  description: string;
+  fixedCost: number | null;
+}
+
+const ABILITY_OPTIONS: AbilityOption[] = [
+  { type: "flip", label: "Переворот", description: "1 очко за 1 цель — перевернуть биты противника", fixedCost: null },
+  { type: "unblockable_damage", label: "Неблокируемый урон", description: "Весь запас очков действия — урон в обход защиты", fixedCost: null },
+  { type: "reroll", label: "Переброс", description: "1 очко — перебросить все свои биты этого раунда", fixedCost: 1 },
+  { type: "damage_mirror", label: "Зеркало урона", description: "2 очка — соперник получает столько же урона, сколько нанёс сам", fixedCost: 2 },
+];
+
+function isAffordable(option: AbilityOption, actionCount: number): boolean {
+  if (option.type === "flip") return true;
+  if (option.type === "unblockable_damage") return actionCount >= 1;
+  return actionCount >= (option.fixedCost ?? 0);
+}
 
 interface Props {
   initialBattle: BattleState;
@@ -18,6 +38,7 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [throwResult, setThrowResult] = useState<ThrowResult | null>(null);
   const [lastRound, setLastRound] = useState<RoundResult | null>(null);
+  const [selectedAbility, setSelectedAbility] = useState<AbilityType>("flip");
   const [selectedTargets, setSelectedTargets] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +49,7 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
     try {
       const result = await throwRound(battle.id);
       setThrowResult(result);
+      setSelectedAbility("flip");
       setSelectedTargets([]);
       setPhase("thrown");
     } catch (err) {
@@ -48,11 +70,15 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPvp, phase]);
 
+  function currentChoice(): AbilityChoice {
+    return { ability: selectedAbility, targets: selectedAbility === "flip" ? selectedTargets : [] };
+  }
+
   async function handleResolve() {
     setBusy(true);
     setError(null);
     try {
-      const { round, battle: updatedBattle } = await resolveRound(battle.id, selectedTargets);
+      const { round, battle: updatedBattle } = await resolveRound(battle.id, currentChoice());
       setLastRound(round);
       setBattle(updatedBattle);
       setPhase("resolved");
@@ -67,7 +93,7 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const response = await submitActions(battle.id, selectedTargets);
+      const response = await submitActions(battle.id, currentChoice());
       if (response.round && response.battle) {
         setLastRound(response.round);
         setBattle(response.battle);
@@ -106,8 +132,13 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
     return () => clearInterval(interval);
   }, [phase, battle.id]);
 
+  function selectAbility(ability: AbilityType) {
+    setSelectedAbility(ability);
+    setSelectedTargets([]);
+  }
+
   function toggleTarget(index: number) {
-    if (!throwResult) return;
+    if (!throwResult || selectedAbility !== "flip") return;
     setSelectedTargets((current) => {
       if (current.includes(index)) {
         return current.filter((i) => i !== index);
@@ -152,7 +183,7 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
                 <BitCoin
                   key={index}
                   face={face}
-                  selectable={phase === "thrown" && throwResult.playerActionCount > 0}
+                  selectable={phase === "thrown" && selectedAbility === "flip" && throwResult.playerActionCount > 0}
                   selected={selectedTargets.includes(index)}
                   onClick={() => toggleTarget(index)}
                 />
@@ -170,9 +201,30 @@ export function ArenaScreen({ initialBattle, onFinished }: Props) {
           </div>
 
           {phase === "thrown" && throwResult.playerActionCount > 0 && (
-            <p className="arena__hint">
-              Действие: выбери до {throwResult.playerActionCount} бит противника, чтобы перевернуть их ({selectedTargets.length}/{throwResult.playerActionCount})
-            </p>
+            <div className="arena__abilities">
+              <p className="arena__hint">Очки действия: {throwResult.playerActionCount}. Выбери способность:</p>
+              <div className="arena__ability-list">
+                {ABILITY_OPTIONS.map((option) => {
+                  const affordable = isAffordable(option, throwResult.playerActionCount);
+                  return (
+                    <button
+                      key={option.type}
+                      className={`arena__ability${selectedAbility === option.type ? " arena__ability--selected" : ""}`}
+                      disabled={!affordable}
+                      onClick={() => selectAbility(option.type)}
+                      title={option.description}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedAbility === "flip" && (
+                <p className="arena__hint">
+                  Выбери до {throwResult.playerActionCount} бит противника, чтобы перевернуть их ({selectedTargets.length}/{throwResult.playerActionCount})
+                </p>
+              )}
+            </div>
           )}
 
           {phase === "thrown" && (

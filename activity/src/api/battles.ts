@@ -1,5 +1,5 @@
 import { apiFetch } from "./client";
-import type { BattleState, ResolveResponse, RoundResult, SubmitActionsResponse, ThrowResult } from "../types/battle";
+import type { AbilityChoice, BattleState, ResolveResponse, RoundResult, SubmitActionsResponse, ThrowResult } from "../types/battle";
 
 export function startPveBattle(): Promise<BattleState> {
   return apiFetch<BattleState>("/battles/pve", { method: "POST" });
@@ -25,17 +25,17 @@ export function throwRound(battleId: number): Promise<ThrowResult> {
   return apiFetch<ThrowResult>(`/battles/${battleId}/throw`, { method: "POST" });
 }
 
-export function resolveRound(battleId: number, actionTargets: number[]): Promise<ResolveResponse> {
+export function resolveRound(battleId: number, choice: AbilityChoice): Promise<ResolveResponse> {
   return apiFetch<ResolveResponse>(`/battles/${battleId}/resolve`, {
     method: "POST",
-    body: JSON.stringify({ actionTargets }),
+    body: JSON.stringify(choice),
   });
 }
 
-export function submitActions(battleId: number, actionTargets: number[]): Promise<SubmitActionsResponse> {
+export function submitActions(battleId: number, choice: AbilityChoice): Promise<SubmitActionsResponse> {
   return apiFetch<SubmitActionsResponse>(`/battles/${battleId}/submit-actions`, {
     method: "POST",
-    body: JSON.stringify({ actionTargets }),
+    body: JSON.stringify(choice),
   });
 }
 
