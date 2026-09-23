@@ -33,8 +33,15 @@ class ExchangeResolverTest extends TestCase
         self::assertSame(0, $result->damageToPlayer);
     }
 
-    public function testMutualAttackDealsDamageToBothSidesWhenNeitherDefends(): void
+    public function testUnansweredAttacksTradeAcrossTwoSequentialExchanges(): void
     {
+        // A response can only ever be defense now (docs/COMBAT_V2_DESIGN.md
+        // §4) — neither side has any, so this is no longer a single
+        // simultaneous "mutual attack" exchange (that mechanic is gone).
+        // Instead: X leads, Y can't respond and just takes the hit, keeping
+        // its own attack bit; lead alternates, Y leads with that same bit,
+        // X has nothing left to block with either — same final numbers as
+        // the old mutual-trade mechanic, reached via two one-sided exchanges.
         $resolver = new ExchangeResolver();
 
         $result = $resolver->resolveRound(
@@ -48,16 +55,16 @@ class ExchangeResolverTest extends TestCase
         self::assertSame(1, $result->damageToPlayer);
     }
 
-    public function testLeaderCommittingAttackFirstLeavesItsOwnDefenseUnusedThisExchange(): void
+    public function testHeldBackDefenseBlocksTheOpponentsCounterLeadNextExchange(): void
     {
         // X leads (more advantage) and — per the default heuristic —
-        // commits its Attack first, leaving its Defense unused for THIS
-        // exchange. Y (no defense of its own) trades blows back. Once Y
-        // (a single bit) is exhausted, X gets one more solo exchange with
-        // its leftover Defense — but with no incoming attack to block, a
-        // defense-only move deals no damage either way, so the total is
-        // unaffected. Contrast with the next test, where a responder's
-        // held-back defense actually gets to block something.
+        // commits its Attack first, leaving its Defense bit unused for THIS
+        // exchange. Y has no defense of its own, so it can't respond at
+        // all (a response can only ever be defense — see
+        // docs/COMBAT_V2_DESIGN.md §4) — it just takes the hit and keeps
+        // its own Attack bit for later. Once the lead alternates, Y leads
+        // with that Attack, and NOW X's held-back Defense is available to
+        // respond and block it fully.
         $resolver = new ExchangeResolver();
 
         $result = $resolver->resolveRound(
@@ -68,7 +75,7 @@ class ExchangeResolverTest extends TestCase
         );
 
         self::assertSame(1, $result->damageToOpponent);
-        self::assertSame(1, $result->damageToPlayer);
+        self::assertSame(0, $result->damageToPlayer);
     }
 
     public function testRespondingSideCanReactivelyBlockWithHeldBackDefense(): void
@@ -118,16 +125,21 @@ class ExchangeResolverTest extends TestCase
         $resolver = new ExchangeResolver();
 
         $result = $resolver->resolveRound(
-            playerThrows: [$this->bit(BitFace::Action), $this->bit(BitFace::Action)],
-            opponentThrows: [$this->bit(BitFace::Attack, true), $this->bit(BitFace::Attack, true)],
+            playerThrows: [$this->bit(BitFace::Action, true), $this->bit(BitFace::Action, true)],
+            opponentThrows: [$this->bit(BitFace::Attack), $this->bit(BitFace::Attack)],
             playerChoice: new AbilityChoice(AbilityType::DamageMirror),
             opponentChoice: AbilityChoice::flip(),
         );
 
-        // Opponent leads (has advantage) with both attacks; player has no
-        // defense, so it takes the full 2 damage — but DamageMirror was
-        // active the moment player committed its action bits in response,
-        // so that same 2 damage bounces back onto the opponent too.
+        // A response can only ever be defense now (docs/COMBAT_V2_DESIGN.md
+        // §4), so an ability can only ever be activated while LEADING, never
+        // while responding. Player leads first (has advantage) with both
+        // action bits, activating DamageMirror — nothing happens yet, it's
+        // just a status effect for the rest of the round. Lead then
+        // alternates to the opponent, who leads with both its attacks;
+        // player has nothing left to block with, so it takes the full 2
+        // damage — but with its mirror already active, that same 2 damage
+        // bounces right back onto the opponent too.
         self::assertSame(2, $result->damageToPlayer);
         self::assertSame(2, $result->damageToOpponent);
     }
@@ -148,11 +160,15 @@ class ExchangeResolverTest extends TestCase
         );
 
         // Player leads (only bit: Action) and flips opponent's bit #0 from
-        // defense to attack. Opponent then responds with that freshly
-        // flipped attack (its only other bit is still defense, but nothing
-        // is threatening it, so the default heuristic prefers attacking).
-        // Player, now out of bits, takes that attack for 1 damage; the
-        // round ends there even though the opponent still has one bit left.
+        // defense to attack. A response can only ever be defense now (see
+        // docs/COMBAT_V2_DESIGN.md §4), and the incoming move is Action
+        // (not Attack), so opponent can't respond at all this exchange —
+        // it just passes, keeping both bits untouched. Lead alternates to
+        // opponent, who leads with its now-flipped Attack bit; player is
+        // already out of bits and takes it for 1 damage. Lead alternates
+        // again for one final, harmless solo exchange where opponent leads
+        // with its last (still-Defense) bit — nothing to block, no one
+        // left to respond, so it deals no further damage either way.
         self::assertSame(1, $result->damageToPlayer);
         self::assertSame(0, $result->damageToOpponent);
         self::assertSame(BitFace::Attack, $result->opponentFaces[0]);
@@ -176,9 +192,13 @@ class ExchangeResolverTest extends TestCase
             opponentChoice: AbilityChoice::flip(),
         );
 
-        // Exchange 1: player leads with its one attack; opponent (no
-        // defense) trades back with its only bit — 1 damage each way.
-        // Opponent is now empty. Exchange 2: player leads solo with its 2
+        // Exchange 1: player leads with its one attack; opponent has no
+        // defense, so it can't respond at all (a response can only ever be
+        // defense — see docs/COMBAT_V2_DESIGN.md §4) — it just takes the 1
+        // damage and keeps its own Attack bit for later. Exchange 2: lead
+        // alternates to opponent, who leads with that same Attack bit;
+        // player has no defense either, so it takes 1 damage right back —
+        // opponent is now empty. Exchange 3: player leads solo with its 2
         // remaining action bits, converting them to 2 unblockable damage
         // (nothing left on the other side to respond, let alone block).
         self::assertSame(1 + 2, $result->damageToOpponent);

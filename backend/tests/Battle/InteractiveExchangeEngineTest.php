@@ -47,7 +47,7 @@ class InteractiveExchangeEngineTest extends TestCase
         self::assertSame('respond', $engine->currentTurn($state));
         self::assertSame(['face' => 'attack', 'count' => 1], $engine->getIncomingMove($state));
 
-        ['state' => $state, 'exchange' => $exchange] = $engine->submitRespond($state, [0], null);
+        ['state' => $state, 'exchange' => $exchange] = $engine->submitRespond($state, [0]);
 
         // Player blocks the incoming attack with its one defense bit.
         self::assertSame(0, $exchange['damageToPlayer']);
@@ -65,7 +65,7 @@ class InteractiveExchangeEngineTest extends TestCase
 
         self::assertSame('respond', $engine->currentTurn($state));
 
-        ['exchange' => $exchange] = $engine->submitRespond($state, [], null);
+        ['exchange' => $exchange] = $engine->submitRespond($state, []);
 
         self::assertSame(1, $exchange['damageToPlayer']);
     }
@@ -75,12 +75,16 @@ class InteractiveExchangeEngineTest extends TestCase
         $engine = new InteractiveExchangeEngine();
         ['state' => $state] = $engine->startRound(
             [$this->bit(BitFace::Attack, true), $this->bit(BitFace::Action), $this->bit(BitFace::Action)],
-            [$this->bit(BitFace::Attack)],
+            [$this->bit(BitFace::Defense)],
         );
 
         ['state' => $state, 'exchange' => $ex1] = $engine->submitLead($state, [0], null, AbilityChoice::flip());
-        self::assertSame(1, $ex1['damageToOpponent']);
-        self::assertSame(1, $ex1['damageToPlayer']);
+        // Opponent's single defense bit fully blocks the incoming attack and
+        // is consumed doing so (a response can only ever be defense now —
+        // see docs/COMBAT_V2_DESIGN.md §4 — so this is the only way it
+        // could have used it at all).
+        self::assertSame(0, $ex1['damageToOpponent']);
+        self::assertSame(0, $ex1['damageToPlayer']);
 
         // Opponent is now empty; player still has 2 action bits — the
         // round must NOT be over yet, and it's the player's turn to lead
@@ -144,6 +148,36 @@ class InteractiveExchangeEngineTest extends TestCase
         $engine->submitLead($state, [0, 1], null, AbilityChoice::flip());
     }
 
+    public function testRespondingWithAnAttackBitIsRejected(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Attack), $this->bit(BitFace::Defense)],
+            [$this->bit(BitFace::Attack, true)],
+        );
+
+        self::assertSame('respond', $engine->currentTurn($state));
+
+        $this->expectException(InvalidExchangeMoveException::class);
+        $this->expectExceptionMessage('You can only respond with defense bits.');
+        $engine->submitRespond($state, [0]);
+    }
+
+    public function testRespondingWithAnActionBitIsRejected(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Action), $this->bit(BitFace::Defense)],
+            [$this->bit(BitFace::Attack, true)],
+        );
+
+        self::assertSame('respond', $engine->currentTurn($state));
+
+        $this->expectException(InvalidExchangeMoveException::class);
+        $this->expectExceptionMessage('You can only respond with defense bits.');
+        $engine->submitRespond($state, [0]);
+    }
+
     public function testFlipDuringLeadMutatesTargetedOpponentBit(): void
     {
         $engine = new InteractiveExchangeEngine();
@@ -204,7 +238,7 @@ class InteractiveExchangeEngineTest extends TestCase
         );
 
         $state = $engine->submitPvpLead($state, true, [0], null);
-        ['state' => $state, 'exchange' => $exchange] = $engine->submitPvpRespond($state, false, [0], null);
+        ['state' => $state, 'exchange' => $exchange] = $engine->submitPvpRespond($state, false, [0]);
 
         self::assertSame(0, $exchange['damageToOpponent']);
         self::assertTrue($exchange['leaderIsPlayer']);
@@ -250,7 +284,7 @@ class InteractiveExchangeEngineTest extends TestCase
         );
 
         $this->expectException(InvalidExchangeMoveException::class);
-        $engine->submitPvpRespond($state, false, [0], null);
+        $engine->submitPvpRespond($state, false, [0]);
     }
 
     public function testPvpOneSideExhaustedOtherContinuesSolo(): void
@@ -262,7 +296,7 @@ class InteractiveExchangeEngineTest extends TestCase
         );
 
         $state = $engine->submitPvpLead($state, true, [0], null);
-        ['state' => $state] = $engine->submitPvpRespond($state, false, [0], null);
+        ['state' => $state] = $engine->submitPvpRespond($state, false, [0]);
 
         // Opponent is now fully spent (their only bit is used) but the
         // player still has one attack bit left — player must keep leading
@@ -275,7 +309,7 @@ class InteractiveExchangeEngineTest extends TestCase
         // to resolve the exchange — nobody auto-plays their empty hand.
         self::assertSame('respond', $engine->turnForSide($state, false));
 
-        ['state' => $state, 'exchange' => $exchange] = $engine->submitPvpRespond($state, false, [], null);
+        ['state' => $state, 'exchange' => $exchange] = $engine->submitPvpRespond($state, false, []);
         self::assertSame(1, $exchange['damageToOpponent']);
         self::assertTrue($state->isOver());
     }
@@ -309,7 +343,7 @@ class InteractiveExchangeEngineTest extends TestCase
 
         self::assertSame('respond', $engine->currentTurn($state));
 
-        ['exchange' => $exchange] = $engine->submitRespond($state, [0], null);
+        ['exchange' => $exchange] = $engine->submitRespond($state, [0]);
 
         // A single ×3 defense bit fully blocks a ×3 attack.
         self::assertSame(0, $exchange['damageToPlayer']);

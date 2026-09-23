@@ -82,7 +82,6 @@ final class ExchangeResolver
             }
 
             $leaderChoice = $leaderIsPlayer ? $playerChoice : $opponentChoice;
-            $responderChoice = $leaderIsPlayer ? $opponentChoice : $playerChoice;
 
             $leaderMove = $this->chooseLeadMove($leaderIsPlayer);
             $this->markUsed($leaderIsPlayer, $leaderMove->face, $leaderMove->count);
@@ -90,22 +89,21 @@ final class ExchangeResolver
                 ? $this->applyActionAbility($leaderIsPlayer, $leaderMove->amount, $leaderChoice)
                 : 0;
 
+            // A response is always defense-or-nothing now (docs/COMBAT_V2_DESIGN.md
+            // §4) — it can never itself deal damage or trigger an ability, so
+            // the leader's side of the exchange is never at risk here (only
+            // when the lead alternates and it becomes the responder's turn
+            // to lead its own exchange).
             $responderMove = $this->chooseResponseMove(!$leaderIsPlayer, $leaderMove);
-            $responderBonus = 0;
             if (null !== $responderMove) {
                 $this->markUsed(!$leaderIsPlayer, $responderMove->face, $responderMove->count);
-                if (BitFace::Action === $responderMove->face) {
-                    $responderBonus = $this->applyActionAbility(!$leaderIsPlayer, $responderMove->amount, $responderChoice);
-                }
             }
 
             $leaderAttack = BitFace::Attack === $leaderMove->face ? $leaderMove->amount : 0;
-            $leaderDefense = BitFace::Defense === $leaderMove->face ? $leaderMove->amount : 0;
-            $responderAttack = null !== $responderMove && BitFace::Attack === $responderMove->face ? $responderMove->amount : 0;
-            $responderDefense = null !== $responderMove && BitFace::Defense === $responderMove->face ? $responderMove->amount : 0;
+            $responderDefense = $responderMove?->amount ?? 0;
 
             $damageToResponderSide = max(0, $leaderAttack - $responderDefense) + $leaderBonus;
-            $damageToLeaderSide = max(0, $responderAttack - $leaderDefense) + $responderBonus;
+            $damageToLeaderSide = 0;
 
             [$exchangeDamageToPlayer, $exchangeDamageToOpponent] = $leaderIsPlayer
                 ? [$damageToLeaderSide, $damageToResponderSide]
@@ -177,22 +175,24 @@ final class ExchangeResolver
         throw new \LogicException('chooseLeadMove called with no remaining bits.');
     }
 
+    /**
+     * A response may only ever use defense bits (never attack or action —
+     * see docs/COMBAT_V2_DESIGN.md §4), and only bothers doing so when
+     * there's actual incoming attack damage to block; otherwise (or with no
+     * defense bits left) this side just passes, leaving its other bits for
+     * when it's next its turn to lead.
+     */
     private function chooseResponseMove(bool $isPlayerSide, Move $incoming): ?Move
     {
-        if (BitFace::Attack === $incoming->face) {
-            // Only commit as much defense as actually needed to block — no
-            // reason to burn a whole reserve blocking one small attack.
-            $gathered = $this->gatherByFace($isPlayerSide, BitFace::Defense, $incoming->amount);
-            if ($gathered['count'] > 0) {
-                return new Move(BitFace::Defense, $gathered['count'], $gathered['amount']);
-            }
-        }
-
-        if (0 === $this->remainingCount($isPlayerSide)) {
+        if (BitFace::Attack !== $incoming->face) {
             return null;
         }
 
-        return $this->chooseLeadMove($isPlayerSide);
+        // Only commit as much defense as actually needed to block — no
+        // reason to burn a whole reserve blocking one small attack.
+        $gathered = $this->gatherByFace($isPlayerSide, BitFace::Defense, $incoming->amount);
+
+        return $gathered['count'] > 0 ? new Move(BitFace::Defense, $gathered['count'], $gathered['amount']) : null;
     }
 
     /**

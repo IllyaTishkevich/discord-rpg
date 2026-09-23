@@ -202,6 +202,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
 
   function toggleOwnBit(index: number) {
     if (pendingAbilityChoice || playerUsed[index]) return;
+    // A response can only ever be a defense bit — never attack or action.
+    if (turn === "respond" && playerFaces[index] !== "defense") return;
     setSelectedIndices((current) => {
       if (current.includes(index)) {
         return current.filter((i) => i !== index);
@@ -288,7 +290,12 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                   face={face}
                   used={playerUsed[index]}
                   multiplier={playerMultipliers[index]}
-                  selectable={turn !== "wait" && !pendingAbilityChoice && !playerUsed[index]}
+                  selectable={
+                    turn !== "wait" &&
+                    !pendingAbilityChoice &&
+                    !playerUsed[index] &&
+                    (turn !== "respond" || face === "defense")
+                  }
                   selected={selectedIndices.includes(index)}
                   onClick={() => toggleOwnBit(index)}
                 />
@@ -299,7 +306,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
           {turn === "wait" && <p className="arena__hint">Ждём ход соперника...</p>}
           {turn === "respond" && incomingMove && !pendingAbilityChoice && (
             <p className="arena__hint arena__hint--selected">
-              Соперник разыграл: <strong>{FACE_LABEL[incomingMove.face]} ×{incomingMove.count}</strong>. Выбери, чем ответить, или пропусти.
+              Соперник разыграл: <strong>{FACE_LABEL[incomingMove.face]} ×{incomingMove.count}</strong>. Ответить можно только защитой, или пропусти.
             </p>
           )}
           {turn === "lead" && !pendingAbilityChoice && <p className="arena__hint">Твой ход — выбери одну или несколько одинаковых бит.</p>}

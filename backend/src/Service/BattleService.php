@@ -431,13 +431,13 @@ class BattleService
         if ('over' === $turn) {
             throw new InvalidBattleStateException('This round has already been fully played out.');
         }
-        // Only relevant if this move actually spends an action point on it
-        // (mirrors InteractiveExchangeEngine's own `BitFace::Action === $face`
-        // gate) — a plain attack/defense move, or an empty "pass" response,
-        // never touches $ability at all, so it shouldn't be blocked by a
-        // missing ability the player isn't even trying to use.
+        // Only relevant when leading with an action-face move (mirrors
+        // InteractiveExchangeEngine's own `BitFace::Action === $face` gate)
+        // — a response can only ever be a defense bit or a pass now (see
+        // docs/COMBAT_V2_DESIGN.md §4), never action, so it should never be
+        // blocked by a missing ability it isn't even trying to use.
         $selectedFace = [] !== $indices ? ($state->playerThrows[$indices[0]] ?? null)?->thrownFace : null;
-        if (null !== $ability && BitFace::Action === $selectedFace) {
+        if (null !== $ability && BitFace::Action === $selectedFace && 'lead' === $turn) {
             $this->assertAbilityAvailable($battle->getCharacter(), $ability);
         }
 
@@ -446,7 +446,7 @@ class BattleService
 
         ['state' => $state, 'exchange' => $exchange] = 'lead' === $turn
             ? $this->interactiveEngine->submitLead($state, $indices, $ability, $botChoice)
-            : $this->interactiveEngine->submitRespond($state, $indices, $ability);
+            : $this->interactiveEngine->submitRespond($state, $indices);
         $newExchanges[] = $exchange;
         $this->applyExchangeDamage($battle, $exchange);
         $knockedOut = $this->isBattleKnockedOut($battle);
@@ -537,7 +537,7 @@ class BattleService
 
         $ownThrows = $isPlayerSide ? $state->playerThrows : $state->opponentThrows;
         $selectedFace = [] !== $indices ? ($ownThrows[$indices[0]] ?? null)?->thrownFace : null;
-        if (null !== $ability && BitFace::Action === $selectedFace) {
+        if (null !== $ability && BitFace::Action === $selectedFace && 'lead' === $turn) {
             $this->assertAbilityAvailable($viewer, $ability);
         }
 
@@ -547,7 +547,7 @@ class BattleService
                 ? $this->interactiveEngine->passPvpLead($state, $isPlayerSide)
                 : $this->interactiveEngine->submitPvpLead($state, $isPlayerSide, $indices, $ability);
         } else {
-            ['state' => $state, 'exchange' => $exchange] = $this->interactiveEngine->submitPvpRespond($state, $isPlayerSide, $indices, $ability);
+            ['state' => $state, 'exchange' => $exchange] = $this->interactiveEngine->submitPvpRespond($state, $isPlayerSide, $indices);
         }
 
         $newExchanges = [];
@@ -615,7 +615,7 @@ class BattleService
         foreach ([true, false] as $isPlayerSide) {
             $turn = $this->interactiveEngine->turnForSide($state, $isPlayerSide);
             if ('respond' === $turn) {
-                ['state' => $state, 'exchange' => $exchange] = $this->interactiveEngine->submitPvpRespond($state, $isPlayerSide, [], null);
+                ['state' => $state, 'exchange' => $exchange] = $this->interactiveEngine->submitPvpRespond($state, $isPlayerSide, []);
                 $this->applyPvpExchangeDamage($battle, $exchange);
                 break;
             }

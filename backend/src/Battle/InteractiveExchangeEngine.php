@@ -217,13 +217,15 @@ final class InteractiveExchangeEngine
     /**
      * PvP-only: the given side responds to the other side's already-pending
      * lead move (or passes, with an empty $indices — full damage from the
-     * incoming move, per docs/COMBAT_V2_DESIGN.md §4).
+     * incoming move, per docs/COMBAT_V2_DESIGN.md §4). A response may only
+     * use defense bits — never attack or action, so a response can never
+     * itself trigger an ability or deal damage back to the leader.
      *
      * @param int[] $indices
      *
      * @return array{state: ExchangeRoundState, exchange: array}
      */
-    public function submitPvpRespond(ExchangeRoundState $state, bool $isPlayerSide, array $indices, ?AbilityChoice $ability): array
+    public function submitPvpRespond(ExchangeRoundState $state, bool $isPlayerSide, array $indices): array
     {
         if ('respond' !== $this->turnForSide($state, $isPlayerSide)) {
             throw new InvalidExchangeMoveException('You are not being asked to respond right now.');
@@ -236,17 +238,13 @@ final class InteractiveExchangeEngine
 
         $responderFace = null;
         $responderAmount = 0;
-        $responderBonus = 0;
         if ([] !== $indices) {
-            ['face' => $responderFace, 'amount' => $responderAmount] = $this->validateAndConsumeMove($state, $isPlayerSide, $indices);
-            if (BitFace::Action === $responderFace) {
-                $responderBonus = $this->applyActionAbility($state, $isPlayerSide, $responderAmount, $ability ?? AbilityChoice::flip());
-            }
+            ['face' => $responderFace, 'amount' => $responderAmount] = $this->validateAndConsumeMove($state, $isPlayerSide, $indices, BitFace::Defense);
         }
 
         $responderMove = null === $responderFace ? null : ['face' => $responderFace, 'amount' => $responderAmount];
         $leaderIsPlayerForExchange = !$isPlayerSide;
-        $exchange = $this->resolveExchange($state, $leaderIsPlayerForExchange, $leaderFace, $leaderAmount, $leaderBonus, $responderMove, $responderBonus);
+        $exchange = $this->resolveExchange($state, $leaderIsPlayerForExchange, $leaderFace, $leaderAmount, $leaderBonus, $responderMove, 0);
         $state->pendingLeaderMove = null;
         $state->leaderIsPlayer = $isPlayerSide;
 
@@ -305,13 +303,15 @@ final class InteractiveExchangeEngine
     /**
      * The player responds to the bot's already-committed lead move. An
      * empty $indices array means passing (no response — full damage from
-     * the incoming move, per docs/COMBAT_V2_DESIGN.md §4).
+     * the incoming move, per docs/COMBAT_V2_DESIGN.md §4). A response may
+     * only use defense bits — never attack or action, so a response can
+     * never itself trigger an ability or deal damage back to the bot.
      *
      * @param int[] $indices
      *
      * @return array{state: ExchangeRoundState, exchange: array}
      */
-    public function submitRespond(ExchangeRoundState $state, array $indices, ?AbilityChoice $ability): array
+    public function submitRespond(ExchangeRoundState $state, array $indices): array
     {
         if ('respond' !== $this->currentTurn($state)) {
             throw new InvalidExchangeMoveException('You are not being asked to respond right now.');
@@ -324,16 +324,12 @@ final class InteractiveExchangeEngine
 
         $responderFace = null;
         $responderAmount = 0;
-        $responderBonus = 0;
         if (\count($indices) > 0) {
-            ['face' => $responderFace, 'amount' => $responderAmount] = $this->validateAndConsumeMove($state, true, $indices);
-            if (BitFace::Action === $responderFace) {
-                $responderBonus = $this->applyActionAbility($state, true, $responderAmount, $ability ?? AbilityChoice::flip());
-            }
+            ['face' => $responderFace, 'amount' => $responderAmount] = $this->validateAndConsumeMove($state, true, $indices, BitFace::Defense);
         }
 
         $responderMove = null === $responderFace ? null : ['face' => $responderFace, 'amount' => $responderAmount];
-        $exchange = $this->resolveExchange($state, false, $leaderFace, $leaderAmount, $leaderBonus, $responderMove, $responderBonus);
+        $exchange = $this->resolveExchange($state, false, $leaderFace, $leaderAmount, $leaderBonus, $responderMove, 0);
         $state->pendingLeaderMove = null;
         $state->leaderIsPlayer = true;
 
@@ -396,7 +392,7 @@ final class InteractiveExchangeEngine
      *
      * @return array{face: BitFace, amount: int}
      */
-    private function validateAndConsumeMove(ExchangeRoundState $state, bool $isPlayerSide, array $indices): array
+    private function validateAndConsumeMove(ExchangeRoundState $state, bool $isPlayerSide, array $indices, ?BitFace $requiredFace = null): array
     {
         if ([] === $indices) {
             throw new InvalidExchangeMoveException('At least one bit must be selected to lead or respond.');
@@ -418,6 +414,12 @@ final class InteractiveExchangeEngine
                 throw new InvalidExchangeMoveException('All selected bits must show the same face.');
             }
             $amount += $throws[$index]->thrownMultiplier;
+        }
+
+        // Reject before consuming anything — a rejected move must never
+        // leave the selected bits marked used.
+        if (null !== $requiredFace && $face !== $requiredFace) {
+            throw new InvalidExchangeMoveException(\sprintf('You can only respond with %s bits.', $requiredFace->value));
         }
 
         // Mark exactly the chosen indices — NOT the generic "first N unused
@@ -455,24 +457,25 @@ final class InteractiveExchangeEngine
     }
 
     /**
+     * A response may only ever use defense bits (never attack or action —
+     * see docs/COMBAT_V2_DESIGN.md §4) — and only bothers doing so when
+     * there's actual incoming attack damage to block; otherwise (or with no
+     * defense bits left) the bot passes, same as a player declining to
+     * respond, leaving its other bits for when it's next its turn to lead.
+     *
      * @return array{face: BitFace, count: int, amount: int}|null
      */
     private function chooseResponseMove(ExchangeRoundState $state, bool $isPlayerSide, BitFace $incomingFace, int $incomingAmount): ?array
     {
-        if (BitFace::Attack === $incomingFace) {
-            // Only commit as much defense as actually needed to block — no
-            // reason to burn a whole reserve blocking one small attack.
-            $gathered = $state->gatherByFace($isPlayerSide, BitFace::Defense, $incomingAmount);
-            if ($gathered['count'] > 0) {
-                return ['face' => BitFace::Defense, 'count' => $gathered['count'], 'amount' => $gathered['amount']];
-            }
-        }
-
-        if (0 === $state->remainingCount($isPlayerSide)) {
+        if (BitFace::Attack !== $incomingFace) {
             return null;
         }
 
-        return $this->chooseLeadMove($state, $isPlayerSide);
+        // Only commit as much defense as actually needed to block — no
+        // reason to burn a whole reserve blocking one small attack.
+        $gathered = $state->gatherByFace($isPlayerSide, BitFace::Defense, $incomingAmount);
+
+        return $gathered['count'] > 0 ? ['face' => BitFace::Defense, 'count' => $gathered['count'], 'amount' => $gathered['amount']] : null;
     }
 
     /**
