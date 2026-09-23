@@ -75,6 +75,20 @@ class User implements UserInterface
         return $this;
     }
 
+    /**
+     * Ready-to-use Discord CDN URL, or null if this user never set an
+     * avatar (Discord's own default-avatar fallback isn't reproduced here —
+     * callers show their own placeholder instead, same as every other
+     * "icon if there is one" spot in this app — see CharacterController and
+     * BattleSerializer, the two current callers).
+     */
+    public function getAvatarUrl(): ?string
+    {
+        return null !== $this->avatar
+            ? \sprintf('https://cdn.discordapp.com/avatars/%s/%s.png', $this->discordId, $this->avatar)
+            : null;
+    }
+
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;

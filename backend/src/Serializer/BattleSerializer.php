@@ -35,10 +35,19 @@ class BattleSerializer
             'status' => $battle->getStatus()->value,
             'roundNumber' => $battle->getRoundNumber(),
             'hasPendingThrow' => $battle->hasPendingThrow(),
+            'roundDeadlineAt' => $battle->getRoundDeadlineAt()?->format(\DATE_ATOM),
             'opponent' => [
                 'name' => $battle->getOpponentName(),
                 'hp' => $battle->getOpponentHp(),
                 'maxHp' => $battle->getOpponentMaxHp(),
+                // Never a real user for PvE/event — iconName/level come from
+                // the catalog Monster if this battle still has one linked
+                // (null for the pre-catalog fallback opponent or an Event,
+                // which don't); avatarUrl/className don't apply here at all.
+                'iconName' => $battle->getOpponentMonster()?->getIconName(),
+                'avatarUrl' => null,
+                'level' => $battle->getOpponentMonster()?->getLevel(),
+                'className' => null,
             ],
             'character' => [
                 'hp' => $battle->getCharacter()->getHp(),
@@ -98,10 +107,15 @@ class BattleSerializer
             'status' => $status->value,
             'roundNumber' => $battle->getRoundNumber(),
             'hasPendingThrow' => $battle->hasPendingThrow(),
+            'roundDeadlineAt' => $battle->getRoundDeadlineAt()?->format(\DATE_ATOM),
             'opponent' => [
                 'name' => $opponent?->getUser()->getDisplayName(),
                 'hp' => $opponent?->getHp(),
                 'maxHp' => $opponent?->getEffectiveMaxHp(),
+                'iconName' => null,
+                'avatarUrl' => $opponent?->getUser()->getAvatarUrl(),
+                'level' => $opponent?->getLevel(),
+                'className' => $opponent?->getCharacterClass()->getName(),
             ],
             'character' => [
                 'hp' => $you->getHp(),

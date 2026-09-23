@@ -77,6 +77,7 @@ class CharacterController extends AbstractApiController
     {
         return [
             'id' => $character->getId(),
+            'avatarUrl' => $character->getUser()->getAvatarUrl(),
             'class' => [
                 'code' => $character->getCharacterClass()->getCode(),
                 'name' => $character->getCharacterClass()->getName(),

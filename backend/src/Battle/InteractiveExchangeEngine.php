@@ -219,6 +219,24 @@ final class InteractiveExchangeEngine
     }
 
     /**
+     * PvE-only equivalent of passPvpLead() — hardcoded to the player
+     * forfeiting, since only the player can ever fail to act in PvE (the
+     * bot always resolves inline the moment it's given the chance, via
+     * autoAdvance() — see BattleService::applyMoveTimeoutIfExpired(), the
+     * only caller). Hands the lead to the bot without consuming any bits.
+     */
+    public function passLead(ExchangeRoundState $state): ExchangeRoundState
+    {
+        if ('lead' !== $this->currentTurn($state)) {
+            throw new InvalidExchangeMoveException('It is not your turn to lead this exchange.');
+        }
+
+        $state->leaderIsPlayer = false;
+
+        return $state;
+    }
+
+    /**
      * PvP-only: the given side responds to the other side's already-pending
      * lead move (or passes, with an empty $indices — full damage from the
      * incoming move, per docs/COMBAT_V2_DESIGN.md §4). A response may only

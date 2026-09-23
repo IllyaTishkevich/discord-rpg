@@ -64,13 +64,15 @@ class BattleController extends AbstractApiController
     {
         $viewerIsOpponentSide = $this->requireParticipantSide($battle);
 
-        if ($battle->isPvp()) {
-            // Lazily applies the move-timeout check — see
-            // BattleService::syncPvpExchangeState()'s docblock — so a
-            // polling opponent sees progress even if the other side never
-            // sends another request of their own.
-            $battleService->syncPvpExchangeState($battle);
+        // Lazily applies the move-timeout check — see
+        // BattleService::syncExchangeState()'s docblock — so a polling PvP
+        // opponent sees progress even if the other side never sends another
+        // request of their own, and (belt-and-suspenders) a PvE battle
+        // doesn't stay stuck forever if the Activity's own client-side
+        // countdown somehow never got to auto-pass it.
+        $battleService->syncExchangeState($battle);
 
+        if ($battle->isPvp()) {
             return $this->json([
                 ...$this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
                 'exchange' => $battle->hasPendingThrow()

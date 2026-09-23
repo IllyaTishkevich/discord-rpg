@@ -248,6 +248,39 @@ class InteractiveExchangeEngineTest extends TestCase
         self::assertSame(BitFace::Attack, $state->opponentThrows[0]->thrownFace);
     }
 
+    public function testPassLeadHandsInitiativeToTheBotWithoutConsumingBits(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Action, true)],
+            [$this->bit(BitFace::Attack)],
+        );
+
+        self::assertSame('lead', $engine->currentTurn($state));
+
+        $state = $engine->passLead($state);
+
+        self::assertFalse($state->leaderIsPlayer);
+        self::assertSame(1, $state->remainingCount(true), 'passing must not consume the passing side\'s bit');
+    }
+
+    public function testPassLeadThrowsWhenItIsNotYourTurnToLead(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        // Bot leads first (more advantage) and, since the player has a bit
+        // to respond with, autoAdvance() pauses here rather than resolving
+        // inline — so it's genuinely the player's turn to *respond*, not lead.
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Defense)],
+            [$this->bit(BitFace::Attack, true)],
+        );
+
+        self::assertSame('respond', $engine->currentTurn($state));
+
+        $this->expectException(InvalidExchangeMoveException::class);
+        $engine->passLead($state);
+    }
+
     // -----------------------------------------------------------------
     // PvP (both sides real — no bot auto-play): startPvpRound(),
     // turnForSide(), submitPvpLead()/passPvpLead(), submitPvpRespond().

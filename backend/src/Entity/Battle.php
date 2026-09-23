@@ -99,12 +99,12 @@ class Battle
     private bool $opponentAccepted = true;
 
     /**
-     * PvP-only: deadline for whichever side currently owes the next move
-     * (lead or respond) in the interactive exchange flow — refreshed every
-     * time the "turn" passes to a (possibly different) side. Checked lazily
-     * (on the next request that touches this battle) rather than via a
-     * worker — see docs/BATTLE_ROOM_DESIGN.md §6 and
-     * BattleService::applyPvpMoveTimeoutIfExpired().
+     * Deadline for whichever side currently owes the next move (lead or
+     * respond) in the interactive exchange flow — refreshed every time the
+     * "turn" passes to a (possibly different) side, for PvE/event and PvP
+     * alike. Checked lazily (on the next request that touches this battle)
+     * rather than via a worker — see docs/BATTLE_ROOM_DESIGN.md §6 and
+     * BattleService::applyMoveTimeoutIfExpired().
      */
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $roundDeadlineAt = null;

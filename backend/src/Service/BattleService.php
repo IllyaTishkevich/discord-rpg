@@ -29,6 +29,7 @@ use App\Exception\NoPendingThrowException;
 use App\Exception\NotBattleParticipantException;
 use App\Repository\MonsterRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * Application service orchestrating battles: PvE/event fights against a bot
@@ -91,7 +92,6 @@ class BattleService
     // matches, so two of a player's own accounts can't farm it by duelling.
     public const PVP_XP_REWARD = 15;
     public const PVP_COIN_REWARD = 10;
-    private const PVP_ROUND_TIMEOUT_SECONDS = 30;
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -101,6 +101,9 @@ class BattleService
         private readonly QuestService $questService,
         private readonly MonsterRepository $monsterRepository,
         private readonly LootService $lootService,
+        // Per-move deadline for the interactive exchange flow, PvE/event and
+        // PvP alike — see refreshMoveDeadline()/applyMoveTimeoutIfExpired().
+        #[Autowire(env: 'int:ROUND_TIMEOUT_SECONDS')] private readonly int $roundTimeoutSeconds,
     ) {
     }
 
@@ -250,7 +253,7 @@ class BattleService
             // move-deadline clock for whoever leads first.
             $state = $this->interactiveEngine->startPvpRound($playerThrows, $opponentThrows);
             $battle->setPendingExchangeState($state->toArray());
-            $this->refreshPvpMoveDeadline($battle);
+            $this->refreshMoveDeadline($battle);
         } else {
             // Interactive step-by-step flow (docs/COMBAT_V2_DESIGN.md §7-8) —
             // startRound() may already auto-play the bot's opening move (or,
@@ -261,6 +264,10 @@ class BattleService
                 $this->applyExchangeDamage($battle, $exchange);
             }
             $battle->setPendingExchangeState($roundState->toArray());
+            // Start the same move-deadline clock for the player's own
+            // lead/respond turn — see refreshMoveDeadline()'s docblock for
+            // why PvE needs this too, even without a second real client.
+            $this->refreshMoveDeadline($battle);
         }
 
         $this->entityManager->flush();
@@ -327,16 +334,19 @@ class BattleService
     }
 
     /**
-     * PvP-only: applies the move-timeout check (see
-     * applyPvpMoveTimeoutIfExpired()) as a side effect of a plain read (GET
-     * /{id}) — so a duel doesn't just silently stall forever if one side
-     * goes idle and never sends another request of their own. No-op for
-     * PvE/event (bot never leaves anyone waiting) or a battle with no
-     * pending throw at all.
+     * Applies the move-timeout check (see applyMoveTimeoutIfExpired()) as a
+     * side effect of a plain read (GET /{id}) — so a battle doesn't just
+     * silently stall forever if whoever currently owes a move goes idle and
+     * never sends another request of their own. This is the *backup* path:
+     * the Activity's own client-side countdown is expected to proactively
+     * submit a pass the moment it hits zero (for PvE that's the only
+     * trigger at all, since nobody else is polling this battle) — this
+     * lazy check just covers a closed tab/crashed client. No-op for a
+     * finished battle or one with no pending throw at all.
      */
-    public function syncPvpExchangeState(Battle $battle): void
+    public function syncExchangeState(Battle $battle): void
     {
-        if (!$battle->isPvp() || BattleStatus::InProgress !== $battle->getStatus() || !$battle->hasPendingThrow()) {
+        if (BattleStatus::InProgress !== $battle->getStatus() || !$battle->hasPendingThrow()) {
             return;
         }
 
@@ -345,9 +355,10 @@ class BattleService
             return;
         }
 
-        $state = $this->applyPvpMoveTimeoutIfExpired($battle, ExchangeRoundState::fromArray($stateArray));
+        $state = $this->applyMoveTimeoutIfExpired($battle, ExchangeRoundState::fromArray($stateArray));
 
-        if ($this->isPvpBattleKnockedOut($battle) || $state->isOver()) {
+        $knockedOut = $battle->isPvp() ? $this->isPvpBattleKnockedOut($battle) : $this->isBattleKnockedOut($battle);
+        if ($knockedOut || $state->isOver()) {
             $this->finalizeInteractiveRound($battle, $state);
         } else {
             $this->entityManager->flush();
@@ -429,6 +440,11 @@ class BattleService
             return $this->submitPvpExchangeMove($battle, $viewer, $state, $indices, $ability);
         }
 
+        $state = $this->applyMoveTimeoutIfExpired($battle, $state);
+        if ($this->isBattleKnockedOut($battle) || $state->isOver()) {
+            return $this->finalizePveMove($battle, $state, []);
+        }
+
         $turn = $this->interactiveEngine->currentTurn($state);
         if ('over' === $turn) {
             throw new InvalidBattleStateException('This round has already been fully played out.');
@@ -477,22 +493,11 @@ class BattleService
         $opponentMultipliers = array_map(static fn (BitThrow $t) => $t->thrownMultiplier, $state->opponentThrows);
 
         if ($knockedOut || $state->isOver()) {
-            $round = $this->finalizeInteractiveRound($battle, $state);
-
-            return new ExchangeMoveResult(
-                roundComplete: true,
-                newExchanges: $newExchanges,
-                playerFaces: $playerFaces,
-                opponentFaces: $opponentFaces,
-                playerUsed: $state->playerUsed,
-                opponentUsed: $state->opponentUsed,
-                playerMultipliers: $playerMultipliers,
-                opponentMultipliers: $opponentMultipliers,
-                round: $round,
-            );
+            return $this->finalizePveMove($battle, $state, $newExchanges);
         }
 
         $battle->setPendingExchangeState($state->toArray());
+        $this->refreshMoveDeadline($battle);
         $this->entityManager->flush();
 
         $turnNow = $this->interactiveEngine->currentTurn($state);
@@ -524,7 +529,7 @@ class BattleService
     {
         $isPlayerSide = !$this->requireSide($battle, $viewer);
 
-        $state = $this->applyPvpMoveTimeoutIfExpired($battle, $state);
+        $state = $this->applyMoveTimeoutIfExpired($battle, $state);
         if ($this->isPvpBattleKnockedOut($battle) || $state->isOver()) {
             return $this->finalizePvpMove($battle, $state, []);
         }
@@ -563,7 +568,7 @@ class BattleService
         }
 
         $battle->setPendingExchangeState($state->toArray());
-        $this->refreshPvpMoveDeadline($battle);
+        $this->refreshMoveDeadline($battle);
         $this->entityManager->flush();
 
         $turnNow = $this->interactiveEngine->turnForSide($state, true);
@@ -600,44 +605,94 @@ class BattleService
     }
 
     /**
-     * If the current move-deadline has passed, whichever side currently
-     * owes a move is treated as passing it — a lazy check (no worker/cron),
+     * PvE/event counterpart to finalizePvpMove() — used both by
+     * submitExchangeMove()'s own "round just ended" branch and by
+     * applyMoveTimeoutIfExpired() when a timed-out turn is what finishes it.
+     */
+    private function finalizePveMove(Battle $battle, ExchangeRoundState $state, array $newExchanges): ExchangeMoveResult
+    {
+        $round = $this->finalizeInteractiveRound($battle, $state);
+
+        return new ExchangeMoveResult(
+            roundComplete: true,
+            newExchanges: $newExchanges,
+            playerFaces: array_map(static fn (BitThrow $t) => $t->thrownFace->value, $state->playerThrows),
+            opponentFaces: array_map(static fn (BitThrow $t) => $t->thrownFace->value, $state->opponentThrows),
+            playerUsed: $state->playerUsed,
+            opponentUsed: $state->opponentUsed,
+            playerMultipliers: array_map(static fn (BitThrow $t) => $t->thrownMultiplier, $state->playerThrows),
+            opponentMultipliers: array_map(static fn (BitThrow $t) => $t->thrownMultiplier, $state->opponentThrows),
+            round: $round,
+        );
+    }
+
+    /**
+     * If the current move-deadline has passed, whichever side currently owes
+     * a move is treated as passing it — a lazy check (no worker/cron),
      * consistent with the project's polling-only sync model (see
      * docs/BATTLE_ROOM_DESIGN.md §6). A "pass" while responding means no
      * response (full damage from the incoming move, same as an explicit
-     * empty submission); a "pass" while leading just hands initiative to
-     * the other side without consuming any bits.
+     * empty submission); a "pass" while leading just hands initiative to the
+     * other side without consuming any bits.
+     *
+     * PvP: either real side can be the one idling, so both are checked
+     * (turnForSide()). PvE: only the player ever can be — the bot always
+     * resolves its own side inline the moment it's given the chance, which
+     * is exactly what the autoAdvance() loop below does once the player's
+     * own forfeited turn (if any) has been applied.
      */
-    private function applyPvpMoveTimeoutIfExpired(Battle $battle, ExchangeRoundState $state): ExchangeRoundState
+    private function applyMoveTimeoutIfExpired(Battle $battle, ExchangeRoundState $state): ExchangeRoundState
     {
         if (!$battle->isRoundDeadlinePassed()) {
             return $state;
         }
 
-        foreach ([true, false] as $isPlayerSide) {
-            $turn = $this->interactiveEngine->turnForSide($state, $isPlayerSide);
-            if ('respond' === $turn) {
-                ['state' => $state, 'exchange' => $exchange] = $this->interactiveEngine->submitPvpRespond($state, $isPlayerSide, []);
-                $this->applyPvpExchangeDamage($battle, $exchange);
-                break;
+        if ($battle->isPvp()) {
+            foreach ([true, false] as $isPlayerSide) {
+                $turn = $this->interactiveEngine->turnForSide($state, $isPlayerSide);
+                if ('respond' === $turn) {
+                    ['state' => $state, 'exchange' => $exchange] = $this->interactiveEngine->submitPvpRespond($state, $isPlayerSide, []);
+                    $this->applyPvpExchangeDamage($battle, $exchange);
+                    break;
+                }
+                if ('lead' === $turn) {
+                    $state = $this->interactiveEngine->passPvpLead($state, $isPlayerSide);
+                    break;
+                }
             }
-            if ('lead' === $turn) {
-                $state = $this->interactiveEngine->passPvpLead($state, $isPlayerSide);
-                break;
+        } else {
+            $turn = $this->interactiveEngine->currentTurn($state);
+            if ('respond' === $turn) {
+                ['state' => $state, 'exchange' => $exchange] = $this->interactiveEngine->submitRespond($state, []);
+                $this->applyExchangeDamage($battle, $exchange);
+            } elseif ('lead' === $turn) {
+                $state = $this->interactiveEngine->passLead($state);
+            }
+
+            $botChoice = $this->pickBotAbility($battle);
+            $knockedOut = $this->isBattleKnockedOut($battle);
+            while (!$knockedOut) {
+                ['state' => $state, 'exchange' => $exchange] = $this->interactiveEngine->autoAdvance($state, $botChoice);
+                if (null === $exchange) {
+                    break;
+                }
+                $this->applyExchangeDamage($battle, $exchange);
+                $knockedOut = $this->isBattleKnockedOut($battle);
             }
         }
 
-        if (!$this->isPvpBattleKnockedOut($battle) && !$state->isOver()) {
+        $knockedOut = $battle->isPvp() ? $this->isPvpBattleKnockedOut($battle) : $this->isBattleKnockedOut($battle);
+        if (!$knockedOut && !$state->isOver()) {
             $battle->setPendingExchangeState($state->toArray());
-            $this->refreshPvpMoveDeadline($battle);
+            $this->refreshMoveDeadline($battle);
         }
 
         return $state;
     }
 
-    private function refreshPvpMoveDeadline(Battle $battle): void
+    private function refreshMoveDeadline(Battle $battle): void
     {
-        $battle->setRoundDeadlineAt(new \DateTimeImmutable(sprintf('+%d seconds', self::PVP_ROUND_TIMEOUT_SECONDS)));
+        $battle->setRoundDeadlineAt(new \DateTimeImmutable(sprintf('+%d seconds', $this->roundTimeoutSeconds)));
     }
 
     private function applyPvpExchangeDamage(Battle $battle, array $exchange): void
