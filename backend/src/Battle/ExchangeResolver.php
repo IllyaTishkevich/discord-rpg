@@ -10,8 +10,10 @@ use App\Enum\BitFace;
  * bits, whoever rolled more "advantage" faces leads the round's exchange
  * sequence. Each exchange: the leader activates a group of same-face bits,
  * the responder reacts (or passes), damage is resolved, and the lead
- * alternates — until one side has no un-activated bits left from this
- * throw. A fresh throw then starts the next round.
+ * alternates — once a side runs out of un-activated bits it can no longer
+ * lead or respond, so the other side just keeps leading solo (unopposed,
+ * full damage each time) until it, too, runs out. Only then does the round
+ * end and a fresh throw start the next one.
  *
  * Currently wired into PvE/event/tournament auto-play only (BattleService,
  * TournamentService) — PvP still uses the older CombatResolver, see
@@ -66,7 +68,16 @@ final class ExchangeResolver
         $damageToOpponentTotal = 0;
         $leaderIsPlayer = $this->determineLeader();
 
-        while ($this->remainingCount(true) > 0 && $this->remainingCount(false) > 0) {
+        while ($this->remainingCount(true) > 0 || $this->remainingCount(false) > 0) {
+            // The round doesn't end the moment one side runs out — whoever
+            // still has bits keeps leading solo (the empty side can never
+            // lead, and can't respond either, so it's full damage each
+            // time — see docs/COMBAT_V2_DESIGN.md §3) until they, too, are
+            // out. Only when BOTH are empty does the round actually end.
+            if (0 === $this->remainingCount($leaderIsPlayer)) {
+                $leaderIsPlayer = !$leaderIsPlayer;
+            }
+
             $leaderChoice = $leaderIsPlayer ? $playerChoice : $opponentChoice;
             $responderChoice = $leaderIsPlayer ? $opponentChoice : $playerChoice;
 

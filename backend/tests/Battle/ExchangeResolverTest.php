@@ -53,9 +53,11 @@ class ExchangeResolverTest extends TestCase
         // X leads (more advantage) and — per the default heuristic —
         // commits its Attack first, leaving its Defense unused for THIS
         // exchange. Y (no defense of its own) trades blows back. Once Y
-        // (a single bit) is exhausted, the round ends and X's untouched
-        // Defense simply burns — proving the leader doesn't get to hold
-        // it in reserve the way a *responder* can (see the next test).
+        // (a single bit) is exhausted, X gets one more solo exchange with
+        // its leftover Defense — but with no incoming attack to block, a
+        // defense-only move deals no damage either way, so the total is
+        // unaffected. Contrast with the next test, where a responder's
+        // held-back defense actually gets to block something.
         $resolver = new ExchangeResolver();
 
         $result = $resolver->resolveRound(
@@ -74,7 +76,11 @@ class ExchangeResolverTest extends TestCase
         // Same two hands as above, but this time the OTHER side leads
         // (more advantage) — the side with Attack+Defense is now reacting,
         // and its response heuristic correctly holds Defense back only to
-        // block the incoming attack, taking no damage at all.
+        // block the incoming attack, taking no damage from that exchange.
+        // Player is then out of bits after its one attack, but the
+        // opponent still has its own Attack bit left over — it gets a
+        // second, unopposed solo exchange with it (see docs/COMBAT_V2_DESIGN.md
+        // §3: the round isn't over just because one side emptied out first).
         $resolver = new ExchangeResolver();
 
         $result = $resolver->resolveRound(
@@ -85,7 +91,7 @@ class ExchangeResolverTest extends TestCase
         );
 
         self::assertSame(0, $result->damageToOpponent);
-        self::assertSame(0, $result->damageToPlayer);
+        self::assertSame(1, $result->damageToPlayer);
     }
 
     public function testUnblockableDamageBypassesDefenseEntirely(): void
@@ -153,6 +159,32 @@ class ExchangeResolverTest extends TestCase
         self::assertSame(BitFace::Defense, $result->opponentFaces[1]);
     }
 
+    public function testExhaustedSideStopsParticipatingButRoundContinuesForTheOther(): void
+    {
+        // Opponent has only 1 bit; player has an attack plus two leftover
+        // action bits. Once the opponent's single bit is spent trading
+        // blows, the round does NOT end — player keeps leading solo with
+        // its remaining action bits (unopposed, no one left to respond),
+        // converting them to unblockable damage that would otherwise have
+        // been silently discarded.
+        $resolver = new ExchangeResolver();
+
+        $result = $resolver->resolveRound(
+            playerThrows: [$this->bit(BitFace::Attack, true), $this->bit(BitFace::Action), $this->bit(BitFace::Action)],
+            opponentThrows: [$this->bit(BitFace::Attack)],
+            playerChoice: new AbilityChoice(AbilityType::UnblockableDamage),
+            opponentChoice: AbilityChoice::flip(),
+        );
+
+        // Exchange 1: player leads with its one attack; opponent (no
+        // defense) trades back with its only bit — 1 damage each way.
+        // Opponent is now empty. Exchange 2: player leads solo with its 2
+        // remaining action bits, converting them to 2 unblockable damage
+        // (nothing left on the other side to respond, let alone block).
+        self::assertSame(1 + 2, $result->damageToOpponent);
+        self::assertSame(1, $result->damageToPlayer);
+    }
+
     public function testTieOnAdvantageBreaksRandomlyViaInjectedCoinFlip(): void
     {
         $resolver = new ExchangeResolver(static fn (): bool => true); // always "player leads"
@@ -168,6 +200,6 @@ class ExchangeResolverTest extends TestCase
         // but the tie is forced via the injected coin flip rather than by a
         // real advantage difference — confirms the hook actually drives it.
         self::assertSame(0, $result->damageToOpponent);
-        self::assertSame(0, $result->damageToPlayer);
+        self::assertSame(1, $result->damageToPlayer);
     }
 }
