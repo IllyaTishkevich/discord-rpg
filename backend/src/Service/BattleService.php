@@ -7,7 +7,10 @@ use App\Battle\AbilityResolver;
 use App\Battle\BitThrow;
 use App\Battle\CombatResolver;
 use App\Battle\Exchange;
+use App\Battle\ExchangeMoveResult;
 use App\Battle\ExchangeResolver;
+use App\Battle\ExchangeRoundState;
+use App\Battle\InteractiveExchangeEngine;
 use App\Battle\RoundResult;
 use App\Battle\ThrowResult;
 use App\Entity\Battle;
@@ -27,25 +30,27 @@ use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Application service orchestrating battles: PvE/event fights against a bot
- * opponent, and PvP duels between two real characters. A round always goes
- * through the same two steps, so the player can see the revealed bits
- * before spending any "action" faces they rolled:
+ * opponent, and PvP duels between two real characters. throwRound() always
+ * comes first, so the player sees the revealed bits before deciding
+ * anything. What follows depends on the surface:
  *
- *  1. throwRound()  — both sides' bits are thrown and stored on the Battle
- *  2. resolveRound() (PvE/event) or submitActions() (PvP) — an AbilityChoice
- *     is applied, damage is computed, pending state is cleared
+ *  - Interactive PvE/event (the Activity's Arena): submitExchangeMove(), one
+ *    call per lead/respond decision — see docs/COMBAT_V2_DESIGN.md §7-8 and
+ *    InteractiveExchangeEngine's class docblock.
+ *  - Non-interactive PvE/event auto-play (bot text commands, tournament
+ *    simulation): resolveRound() plays the whole round out in one call via
+ *    ExchangeResolver, with the player's side driven by a single upfront
+ *    AbilityChoice + heuristic instead of real per-exchange decisions.
+ *  - PvP: submitActions() — still the older simultaneous-reveal
+ *    CombatResolver (§7 of that doc explains why the interactive engine
+ *    hasn't been ported to the live two-player protocol yet).
  *
- * Damage computation differs by mode (see computeAndApplyRound()): PvE/event
- * (and TournamentService's simulated matches) use ExchangeResolver, the
- * priority + sequential exchange engine from docs/COMBAT_V2_DESIGN.md; PvP
- * still uses the older simultaneous-reveal CombatResolver (§7 of that doc
- * explains why that hasn't been ported yet).
- *
- * Combat abilities (docs/BATTLE_RULES.md §3.1): each round, whichever side
- * has rolled "action" faces picks ONE ability to spend them on — Flip (the
- * original/default), UnblockableDamage, Reroll, or DamageMirror — not a mix.
- * The bot opponent in PvE/event battles always uses Flip (unchanged);
- * abilities are a real-player-only choice for now.
+ * Combat abilities (docs/BATTLE_RULES.md §3.1): whichever side has rolled
+ * "action" faces picks an ability to spend them on — Flip (the original/
+ * default), UnblockableDamage, Reroll, or DamageMirror — not a mix. In the
+ * interactive flow the ability is chosen per action-bit move as it's
+ * played; in the non-interactive engine it's one upfront choice for the
+ * whole round. The bot opponent always uses Flip.
  *
  * PvP lifecycle (see docs/BATTLE_ROOM_DESIGN.md): createPvpChallenge()
  * creates the Battle itself in `waiting` status — that row *is* the invite.
@@ -80,6 +85,7 @@ class BattleService
         private readonly EntityManagerInterface $entityManager,
         private readonly CombatResolver $combatResolver,
         private readonly ExchangeResolver $exchangeResolver,
+        private readonly InteractiveExchangeEngine $interactiveEngine,
         private readonly AbilityResolver $abilityResolver,
         private readonly QuestService $questService,
     ) {
@@ -281,9 +287,23 @@ class BattleService
             array_map(static fn (BitThrow $t) => $t->toArray(), $opponentThrows),
         );
         $battle->setRoundDeadlineAt($battle->isPvp() ? new \DateTimeImmutable(sprintf('+%d seconds', self::PVP_ROUND_TIMEOUT_SECONDS)) : null);
+
+        if (!$battle->isPvp()) {
+            // Interactive step-by-step flow (docs/COMBAT_V2_DESIGN.md §7-8) —
+            // PvP keeps the older whole-round-at-once submitActions() below.
+            // startRound() may already auto-play the bot's opening move (or,
+            // in the near-impossible case of a 0-bit character, resolve the
+            // entire round instantly) — apply any such exchanges now.
+            ['state' => $roundState, 'exchanges' => $exchanges] = $this->interactiveEngine->startRound($playerThrows, $opponentThrows);
+            foreach ($exchanges as $exchange) {
+                $this->applyExchangeDamage($battle, $exchange);
+            }
+            $battle->setPendingExchangeState($roundState->toArray());
+        }
+
         $this->entityManager->flush();
 
-        return $this->throwResultFromThrows($playerThrows, $opponentThrows);
+        return $this->throwResultFromThrows($battle, $playerThrows, $opponentThrows);
     }
 
     private function currentThrowResult(Battle $battle): ThrowResult
@@ -291,18 +311,31 @@ class BattleService
         $playerThrows = array_map(BitThrow::fromArray(...), $battle->getPendingPlayerThrows());
         $opponentThrows = array_map(BitThrow::fromArray(...), $battle->getPendingOpponentThrows());
 
-        return $this->throwResultFromThrows($playerThrows, $opponentThrows);
+        return $this->throwResultFromThrows($battle, $playerThrows, $opponentThrows);
     }
 
     /**
      * @param BitThrow[] $playerThrows
      * @param BitThrow[] $opponentThrows
      */
-    private function throwResultFromThrows(array $playerThrows, array $opponentThrows): ThrowResult
+    private function throwResultFromThrows(Battle $battle, array $playerThrows, array $opponentThrows): ThrowResult
     {
         $playerActionCount = $this->abilityResolver->countActionFaces($playerThrows);
 
-        return new ThrowResult($playerThrows, $opponentThrows, $playerActionCount);
+        $turn = null;
+        $incomingMove = null;
+        $playerUsed = null;
+        $opponentUsed = null;
+        $stateArray = $battle->getPendingExchangeState();
+        if (!$battle->isPvp() && null !== $stateArray) {
+            $state = ExchangeRoundState::fromArray($stateArray);
+            $turn = $this->interactiveEngine->currentTurn($state);
+            $incomingMove = 'respond' === $turn ? $this->interactiveEngine->getIncomingMove($state) : null;
+            $playerUsed = $state->playerUsed;
+            $opponentUsed = $state->opponentUsed;
+        }
+
+        return new ThrowResult($playerThrows, $opponentThrows, $playerActionCount, $turn, $incomingMove, $playerUsed, $opponentUsed);
     }
 
     /**
@@ -325,6 +358,133 @@ class BattleService
         // represented here as a Flip choice with no explicit targets so
         // computeAndApplyRound's post-damage step is a no-op for its side.
         return $this->computeAndApplyRound($battle, $characterChoice, AbilityChoice::flip());
+    }
+
+    /**
+     * PvE/event only — one step of the interactive exchange flow
+     * (docs/COMBAT_V2_DESIGN.md §7-8): either leading (your turn to commit
+     * bits) or responding to the bot's already-committed lead move,
+     * inferred from the battle's own pending state rather than trusted
+     * from the client. See InteractiveExchangeEngine's class docblock for
+     * the underlying call pattern this wraps.
+     *
+     * @param int[] $indices
+     */
+    public function submitExchangeMove(Battle $battle, array $indices, ?AbilityChoice $ability): ExchangeMoveResult
+    {
+        if ($battle->isPvp()) {
+            throw new InvalidBattleStateException('submitExchangeMove() is PvE/event-only.');
+        }
+        if (BattleStatus::InProgress !== $battle->getStatus()) {
+            throw new BattleAlreadyFinishedException('This battle has already finished.');
+        }
+
+        $stateArray = $battle->getPendingExchangeState();
+        if (null === $stateArray) {
+            throw new NoPendingThrowException('No exchange in progress — call throwRound() first.');
+        }
+        $state = ExchangeRoundState::fromArray($stateArray);
+
+        $turn = $this->interactiveEngine->currentTurn($state);
+        if ('over' === $turn) {
+            throw new InvalidBattleStateException('This round has already been fully played out.');
+        }
+
+        $botChoice = AbilityChoice::flip();
+        $newExchanges = [];
+
+        ['state' => $state, 'exchange' => $exchange] = 'lead' === $turn
+            ? $this->interactiveEngine->submitLead($state, $indices, $ability, $botChoice)
+            : $this->interactiveEngine->submitRespond($state, $indices, $ability);
+        $newExchanges[] = $exchange;
+        $this->applyExchangeDamage($battle, $exchange);
+        $knockedOut = $this->isBattleKnockedOut($battle);
+
+        // Keep auto-playing any further bot-driven exchanges (e.g. the
+        // player is out of bits and the bot keeps swinging solo — see
+        // docs/COMBAT_V2_DESIGN.md §3) until it's genuinely the player's
+        // turn again, the round ends naturally, or someone is knocked out
+        // mid-round (which cuts the round short right there).
+        while (!$knockedOut) {
+            ['state' => $state, 'exchange' => $exchange] = $this->interactiveEngine->autoAdvance($state, $botChoice);
+            if (null === $exchange) {
+                break;
+            }
+            $newExchanges[] = $exchange;
+            $this->applyExchangeDamage($battle, $exchange);
+            $knockedOut = $this->isBattleKnockedOut($battle);
+        }
+
+        // Faces can change mid-round (Flip) and are captured here regardless
+        // of which branch below runs — the client needs the current values,
+        // not just the ones from the original throw.
+        $playerFaces = array_map(static fn (BitThrow $t) => $t->thrownFace->value, $state->playerThrows);
+        $opponentFaces = array_map(static fn (BitThrow $t) => $t->thrownFace->value, $state->opponentThrows);
+
+        if ($knockedOut || $state->isOver()) {
+            $round = $this->finalizeInteractiveRound($battle, $state);
+
+            return new ExchangeMoveResult(
+                roundComplete: true,
+                newExchanges: $newExchanges,
+                playerFaces: $playerFaces,
+                opponentFaces: $opponentFaces,
+                playerUsed: $state->playerUsed,
+                opponentUsed: $state->opponentUsed,
+                round: $round,
+            );
+        }
+
+        $battle->setPendingExchangeState($state->toArray());
+        $this->entityManager->flush();
+
+        $turnNow = $this->interactiveEngine->currentTurn($state);
+
+        return new ExchangeMoveResult(
+            roundComplete: false,
+            newExchanges: $newExchanges,
+            playerFaces: $playerFaces,
+            opponentFaces: $opponentFaces,
+            playerUsed: $state->playerUsed,
+            opponentUsed: $state->opponentUsed,
+            turn: $turnNow,
+            incomingMove: 'respond' === $turnNow ? $this->interactiveEngine->getIncomingMove($state) : null,
+        );
+    }
+
+    private function applyExchangeDamage(Battle $battle, array $exchange): void
+    {
+        $character = $battle->getCharacter();
+        $character->setHp($character->getHp() - $exchange['damageToPlayer']);
+        $battle->setOpponentHp($battle->getOpponentHp() - $exchange['damageToOpponent']);
+    }
+
+    private function isBattleKnockedOut(Battle $battle): bool
+    {
+        return $battle->getCharacter()->getHp() <= 0 || $battle->getOpponentHp() <= 0;
+    }
+
+    private function finalizeInteractiveRound(Battle $battle, ExchangeRoundState $state): BattleRound
+    {
+        $battle->setPendingThrows(null, null);
+        $battle->setPendingExchangeState(null);
+        $battle->incrementRoundNumber();
+
+        $round = new BattleRound(
+            $battle,
+            $battle->getRoundNumber(),
+            array_map(static fn (BitThrow $t) => $t->thrownFace->value, $state->playerThrows),
+            array_map(static fn (BitThrow $t) => $t->thrownFace->value, $state->opponentThrows),
+            array_sum(array_column($state->exchanges, 'damageToOpponent')),
+            array_sum(array_column($state->exchanges, 'damageToPlayer')),
+            $state->exchanges,
+        );
+        $this->entityManager->persist($round);
+
+        $this->resolveOutcome($battle);
+        $this->entityManager->flush();
+
+        return $round;
     }
 
     private function computeAndApplyRound(Battle $battle, AbilityChoice $characterChoice, AbilityChoice $opponentChoice): BattleRound

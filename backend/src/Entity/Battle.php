@@ -125,6 +125,18 @@ class Battle
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $pendingOpponentActionTargets = null;
 
+    /**
+     * PvE/event only: mid-round state for the interactive step-by-step
+     * exchange flow (ExchangeRoundState::toArray() shape) — non-null
+     * exactly while a round's exchanges are still being played out, i.e.
+     * whenever there's a pending throw for a non-PvP battle. See
+     * BattleService::submitExchangeMove().
+     *
+     * @var array<string, mixed>|null
+     */
+    #[ORM\Column(type: 'json', nullable: true)]
+    private ?array $pendingExchangeState = null;
+
     #[ORM\OneToMany(mappedBy: 'battle', targetEntity: BattleRound::class, orphanRemoval: true)]
     #[ORM\OrderBy(['roundNumber' => 'ASC'])]
     private Collection $rounds;
@@ -374,6 +386,24 @@ class Battle
     {
         $this->pendingCharacterActionTargets = null;
         $this->pendingOpponentActionTargets = null;
+    }
+
+    /**
+     * @return array<string, mixed>|null ExchangeRoundState::toArray() shape
+     */
+    public function getPendingExchangeState(): ?array
+    {
+        return $this->pendingExchangeState;
+    }
+
+    /**
+     * @param array<string, mixed>|null $state
+     */
+    public function setPendingExchangeState(?array $state): static
+    {
+        $this->pendingExchangeState = $state;
+
+        return $this;
     }
 
     /**

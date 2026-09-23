@@ -11,6 +11,7 @@ use App\Exception\BattleAlreadyFinishedException;
 use App\Exception\InsufficientActionPointsException;
 use App\Exception\InsufficientEnergyException;
 use App\Exception\InvalidBattleStateException;
+use App\Exception\InvalidExchangeMoveException;
 use App\Exception\NoPendingThrowException;
 use App\Repository\BattleRepository;
 use App\Serializer\BattleSerializer;
@@ -130,13 +131,26 @@ class BattleController extends AbstractApiController
     }
 
     /**
-     * PvE/event only. PvP rounds go through /submit-actions instead, since
-     * damage can't be computed until both real sides have chosen.
+     * PvE/event only, interactive step-by-step flow
+     * (docs/COMBAT_V2_DESIGN.md §7-8). Submits one lead-or-respond
+     * decision — the server infers which from the battle's own pending
+     * state, never trusting the client's idea of whose turn it is. Body:
+     * `{indices: number[], ability?: string, targets?: number[]}`; an
+     * empty `indices` means "pass" and is only valid when responding to
+     * an incoming attack. PvP still goes through /submit-actions instead,
+     * since that protocol hasn't been ported to this engine yet.
      */
-    #[Route('/{id}/resolve', name: 'battle_resolve_round', methods: ['POST'])]
-    public function resolveRound(Battle $battle, Request $request, BattleService $battleService): JsonResponse
+    #[Route('/{id}/exchanges/move', name: 'battle_submit_exchange_move', methods: ['POST'])]
+    public function submitExchangeMove(Battle $battle, Request $request, BattleService $battleService): JsonResponse
     {
         $this->requireParticipantSide($battle);
+
+        $body = $this->decodeJson($request);
+        $indices = $body['indices'] ?? [];
+        if (!\is_array($indices)) {
+            return $this->json(['error' => '"indices" must be an array of bit indices.'], 400);
+        }
+        $indices = array_map('intval', $indices);
 
         $choice = $this->decodeAbilityChoice($request);
         if (null === $choice) {
@@ -144,17 +158,37 @@ class BattleController extends AbstractApiController
         }
 
         try {
-            $round = $battleService->resolveRound($battle, $choice);
+            $result = $battleService->submitExchangeMove($battle, $indices, $choice);
         } catch (NoPendingThrowException) {
-            return $this->json(['error' => 'Call /throw before /resolve.'], 409);
-        } catch (InsufficientActionPointsException $e) {
-            return $this->json(['error' => $e->getMessage()], 409);
-        } catch (InvalidBattleStateException $e) {
+            return $this->json(['error' => 'Call /throw before submitting a move.'], 409);
+        } catch (InvalidExchangeMoveException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        } catch (InsufficientActionPointsException|InvalidBattleStateException|BattleAlreadyFinishedException $e) {
             return $this->json(['error' => $e->getMessage()], 409);
         }
 
+        if ($result->roundComplete) {
+            return $this->json([
+                'roundComplete' => true,
+                'newExchanges' => $result->newExchanges,
+                'playerFaces' => $result->playerFaces,
+                'opponentFaces' => $result->opponentFaces,
+                'playerUsed' => $result->playerUsed,
+                'opponentUsed' => $result->opponentUsed,
+                'round' => $this->serializer->round($result->round),
+                'battle' => $this->serializer->battle($battle),
+            ]);
+        }
+
         return $this->json([
-            'round' => $this->serializer->round($round),
+            'roundComplete' => false,
+            'newExchanges' => $result->newExchanges,
+            'playerFaces' => $result->playerFaces,
+            'opponentFaces' => $result->opponentFaces,
+            'playerUsed' => $result->playerUsed,
+            'opponentUsed' => $result->opponentUsed,
+            'turn' => $result->turn,
+            'incomingMove' => $result->incomingMove,
             'battle' => $this->serializer->battle($battle),
         ]);
     }

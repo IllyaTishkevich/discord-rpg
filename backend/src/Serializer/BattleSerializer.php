@@ -47,6 +47,11 @@ class BattleSerializer
             'playerFaces' => array_map(static fn ($t) => $t->thrownFace->value, $result->playerThrows),
             'opponentFaces' => array_map(static fn ($t) => $t->thrownFace->value, $result->opponentThrows),
             'playerActionCount' => $result->playerActionCount,
+            // PvE/event interactive flow only (docs/COMBAT_V2_DESIGN.md §7-8) — null for PvP.
+            'turn' => $result->turn,
+            'incomingMove' => $result->incomingMove,
+            'playerUsed' => $result->playerUsed,
+            'opponentUsed' => $result->opponentUsed,
         ];
     }
 
