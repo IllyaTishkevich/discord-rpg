@@ -89,7 +89,12 @@ class CharacterController extends AbstractApiController
             'xp' => $character->getXp(),
             'coins' => $character->getCoins(),
             'bits' => array_map(
-                static fn (Bit $bit) => ['faceA' => $bit->getFaceA()->value, 'faceB' => $bit->getFaceB()->value],
+                static fn (Bit $bit) => [
+                    'faceA' => $bit->getFaceA()->value,
+                    'faceB' => $bit->getFaceB()->value,
+                    'multiplierA' => $bit->getMultiplierA(),
+                    'multiplierB' => $bit->getMultiplierB(),
+                ],
                 $character->getAllBits(),
             ),
             // The Activity's ability picker (docs/BATTLE_RULES.md §3.1) filters

@@ -124,8 +124,8 @@ class TournamentService
         $bHp = $b->getMaxHp();
 
         for ($round = 0; $round < self::MAX_SIMULATED_ROUNDS; ++$round) {
-            $aThrows = array_map(static fn ($bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()), $aBits);
-            $bThrows = array_map(static fn ($bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()), $bBits);
+            $aThrows = array_map(static fn ($bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB(), $bit->getMultiplierA(), $bit->getMultiplierB()), $aBits);
+            $bThrows = array_map(static fn ($bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB(), $bit->getMultiplierA(), $bit->getMultiplierB()), $bBits);
 
             $result = $this->exchangeResolver->resolveRound($aThrows, $bThrows, AbilityChoice::flip(), AbilityChoice::flip());
             $aHp -= $result->damageToPlayer;

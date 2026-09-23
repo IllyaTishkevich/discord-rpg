@@ -53,6 +53,10 @@ class BattleSerializer
         return [
             'playerFaces' => array_map(static fn ($t) => $t->thrownFace->value, $result->playerThrows),
             'opponentFaces' => array_map(static fn ($t) => $t->thrownFace->value, $result->opponentThrows),
+            // What each face is worth (Bit::$multiplierA's docblock) — same
+            // index order as the faces above, travels along through Flip.
+            'playerMultipliers' => array_map(static fn ($t) => $t->thrownMultiplier, $result->playerThrows),
+            'opponentMultipliers' => array_map(static fn ($t) => $t->thrownMultiplier, $result->opponentThrows),
             'playerActionCount' => $result->playerActionCount,
             // Interactive exchange flow (docs/COMBAT_V2_DESIGN.md §7-8) —
             // this method is only ever called for PvE/event (single real
@@ -122,6 +126,8 @@ class BattleSerializer
         return [
             'playerFaces' => array_map(static fn ($t) => $t->thrownFace->value, $yourThrows),
             'opponentFaces' => array_map(static fn ($t) => $t->thrownFace->value, $theirThrows),
+            'playerMultipliers' => array_map(static fn ($t) => $t->thrownMultiplier, $yourThrows),
+            'opponentMultipliers' => array_map(static fn ($t) => $t->thrownMultiplier, $theirThrows),
             'playerActionCount' => \count(array_filter($yourThrows, static fn ($t) => BitFace::Action === $t->thrownFace)),
             'turn' => $this->turnForViewer($result->turn, $hasPendingLeaderMove, $viewerIsOpponentSide),
             // Symmetric — both sides see the same pending move description,
@@ -138,6 +144,8 @@ class BattleSerializer
         $theirFaces = $viewerIsOpponentSide ? $result->playerFaces : $result->opponentFaces;
         $yourUsed = $viewerIsOpponentSide ? $result->opponentUsed : $result->playerUsed;
         $theirUsed = $viewerIsOpponentSide ? $result->playerUsed : $result->opponentUsed;
+        $yourMultipliers = $viewerIsOpponentSide ? $result->opponentMultipliers : $result->playerMultipliers;
+        $theirMultipliers = $viewerIsOpponentSide ? $result->playerMultipliers : $result->opponentMultipliers;
         $hasPendingLeaderMove = null !== $result->incomingMove;
 
         return [
@@ -147,6 +155,8 @@ class BattleSerializer
             'opponentFaces' => $theirFaces,
             'playerUsed' => $yourUsed,
             'opponentUsed' => $theirUsed,
+            'playerMultipliers' => $yourMultipliers,
+            'opponentMultipliers' => $theirMultipliers,
             'turn' => $this->turnForViewer($result->turn, $hasPendingLeaderMove, $viewerIsOpponentSide),
             'incomingMove' => $result->incomingMove,
         ];

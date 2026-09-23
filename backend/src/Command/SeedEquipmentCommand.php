@@ -51,7 +51,14 @@ class SeedEquipmentCommand extends Command
             if (EquipmentEffectType::Hp === $effectType) {
                 $equipment->setHpBonus($definition['hpBonus']);
             } else {
-                $equipment->setBitFaces($definition['faceA'], $definition['faceB'], $definition['advantageA'] ?? false, $definition['advantageB'] ?? false);
+                $equipment->setBitFaces(
+                    $definition['faceA'],
+                    $definition['faceB'],
+                    $definition['advantageA'] ?? false,
+                    $definition['advantageB'] ?? false,
+                    $definition['multiplierA'] ?? 1,
+                    $definition['multiplierB'] ?? 1,
+                );
             }
 
             $this->entityManager->persist($equipment);

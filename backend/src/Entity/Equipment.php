@@ -51,6 +51,14 @@ class Equipment
     #[ORM\Column]
     private bool $bitAdvantageB = false;
 
+    #[ORM\Column]
+    #[Assert\Positive(message: 'Множитель должен быть не меньше 1.')]
+    private int $bitMultiplierA = 1;
+
+    #[ORM\Column]
+    #[Assert\Positive(message: 'Множитель должен быть не меньше 1.')]
+    private int $bitMultiplierB = 1;
+
     #[ORM\Column(nullable: true)]
     private ?int $hpBonus = null;
 
@@ -186,12 +194,20 @@ class Equipment
         return $this;
     }
 
-    public function setBitFaces(BitFace $faceA, BitFace $faceB, bool $advantageA = false, bool $advantageB = false): static
-    {
+    public function setBitFaces(
+        BitFace $faceA,
+        BitFace $faceB,
+        bool $advantageA = false,
+        bool $advantageB = false,
+        int $multiplierA = 1,
+        int $multiplierB = 1,
+    ): static {
         $this->bitFaceA = $faceA;
         $this->bitFaceB = $faceB;
         $this->bitAdvantageA = $advantageA;
         $this->bitAdvantageB = $advantageB;
+        $this->bitMultiplierA = $multiplierA;
+        $this->bitMultiplierB = $multiplierB;
 
         return $this;
     }
@@ -216,6 +232,30 @@ class Equipment
     public function setBitAdvantageB(bool $bitAdvantageB): static
     {
         $this->bitAdvantageB = $bitAdvantageB;
+
+        return $this;
+    }
+
+    public function getBitMultiplierA(): int
+    {
+        return $this->bitMultiplierA;
+    }
+
+    public function setBitMultiplierA(int $bitMultiplierA): static
+    {
+        $this->bitMultiplierA = $bitMultiplierA;
+
+        return $this;
+    }
+
+    public function getBitMultiplierB(): int
+    {
+        return $this->bitMultiplierB;
+    }
+
+    public function setBitMultiplierB(int $bitMultiplierB): static
+    {
+        $this->bitMultiplierB = $bitMultiplierB;
 
         return $this;
     }

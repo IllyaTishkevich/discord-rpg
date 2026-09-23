@@ -11,9 +11,9 @@ use PHPUnit\Framework\TestCase;
 
 class ExchangeResolverTest extends TestCase
 {
-    private function bit(BitFace $face, bool $advantage = false): BitThrow
+    private function bit(BitFace $face, bool $advantage = false, int $multiplier = 1): BitThrow
     {
-        return new BitThrow($face, $face, $advantage, $advantage, $face, $advantage);
+        return new BitThrow($face, $face, $advantage, $advantage, $face, $advantage, $multiplier, $multiplier, $multiplier);
     }
 
     public function testPartialBlockLeavesExcessAttackAsDamage(): void
@@ -201,5 +201,58 @@ class ExchangeResolverTest extends TestCase
         // real advantage difference — confirms the hook actually drives it.
         self::assertSame(0, $result->damageToOpponent);
         self::assertSame(1, $result->damageToPlayer);
+    }
+
+    // -----------------------------------------------------------------
+    // Multiplier: a face's damage/blocking/action-point contribution is
+    // its multiplier, not a flat 1 per activated bit.
+    // -----------------------------------------------------------------
+
+    public function testMultipliedAttackDealsDamageEqualToItsMultiplier(): void
+    {
+        $resolver = new ExchangeResolver();
+
+        $result = $resolver->resolveRound(
+            playerThrows: [$this->bit(BitFace::Attack, advantage: true, multiplier: 3)],
+            opponentThrows: [$this->bit(BitFace::Defense)],
+            playerChoice: AbilityChoice::flip(),
+            opponentChoice: AbilityChoice::flip(),
+        );
+
+        // ×3 attack vs a single (×1) defense: 3 - 1 = 2 gets through.
+        self::assertSame(2, $result->damageToOpponent);
+    }
+
+    public function testMultipliedDefenseBlocksProportionally(): void
+    {
+        $resolver = new ExchangeResolver();
+
+        $result = $resolver->resolveRound(
+            playerThrows: [$this->bit(BitFace::Attack, advantage: true, multiplier: 3)],
+            opponentThrows: [$this->bit(BitFace::Defense, multiplier: 3)],
+            playerChoice: AbilityChoice::flip(),
+            opponentChoice: AbilityChoice::flip(),
+        );
+
+        // ×3 attack fully blocked by a single ×3 defense bit — one bit is
+        // enough, matching what its multiplier is actually worth.
+        self::assertSame(0, $result->damageToOpponent);
+    }
+
+    public function testMultipliedActionFaceGrantsProportionalActionPoints(): void
+    {
+        $resolver = new ExchangeResolver();
+
+        $result = $resolver->resolveRound(
+            playerThrows: [$this->bit(BitFace::Action, advantage: true, multiplier: 2)],
+            opponentThrows: [$this->bit(BitFace::Attack)],
+            playerChoice: new AbilityChoice(AbilityType::UnblockableDamage),
+            opponentChoice: AbilityChoice::flip(),
+        );
+
+        // A single ×2 action bit banks 2 action points — enough to afford
+        // UnblockableDamage's fixed cost of 2, dealing 2 unblockable damage
+        // (not 1, which is what a literal bit-count would have given).
+        self::assertSame(2, $result->damageToOpponent);
     }
 }

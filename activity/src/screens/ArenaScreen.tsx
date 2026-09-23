@@ -79,6 +79,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   const [opponentFaces, setOpponentFaces] = useState<BitFace[]>([]);
   const [playerUsed, setPlayerUsed] = useState<boolean[]>([]);
   const [opponentUsed, setOpponentUsed] = useState<boolean[]>([]);
+  const [playerMultipliers, setPlayerMultipliers] = useState<number[]>([]);
+  const [opponentMultipliers, setOpponentMultipliers] = useState<number[]>([]);
   const [turn, setTurn] = useState<ExchangeTurn | null>(null);
   const [incomingMove, setIncomingMove] = useState<IncomingMove | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
@@ -100,6 +102,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setOpponentFaces(result.opponentFaces);
       setPlayerUsed(result.playerUsed ?? result.playerFaces.map(() => false));
       setOpponentUsed(result.opponentUsed ?? result.opponentFaces.map(() => false));
+      setPlayerMultipliers(result.playerMultipliers);
+      setOpponentMultipliers(result.opponentMultipliers);
       setTurn(result.turn);
       setIncomingMove(result.incomingMove);
       setExchangeLog([]);
@@ -129,6 +133,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setOpponentFaces(response.opponentFaces);
       setPlayerUsed(response.playerUsed);
       setOpponentUsed(response.opponentUsed);
+      setPlayerMultipliers(response.playerMultipliers);
+      setOpponentMultipliers(response.opponentMultipliers);
       setExchangeLog((current) => [...current, ...response.newExchanges]);
       setBattle(response.battle);
       setSelectedIndices([]);
@@ -171,6 +177,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
           setOpponentFaces(updated.exchange.opponentFaces);
           setPlayerUsed(updated.exchange.playerUsed ?? []);
           setOpponentUsed(updated.exchange.opponentUsed ?? []);
+          setPlayerMultipliers(updated.exchange.playerMultipliers);
+          setOpponentMultipliers(updated.exchange.opponentMultipliers);
           setTurn(updated.exchange.turn);
           setIncomingMove(updated.exchange.incomingMove);
           return;
@@ -262,6 +270,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                   key={index}
                   face={face}
                   used={opponentUsed[index]}
+                  multiplier={opponentMultipliers[index]}
                   selectable={pendingAbilityChoice && selectedAbility === "flip" && !opponentUsed[index]}
                   selected={flipTargets.includes(index)}
                   onClick={() => toggleFlipTarget(index)}
@@ -278,6 +287,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                   key={index}
                   face={face}
                   used={playerUsed[index]}
+                  multiplier={playerMultipliers[index]}
                   selectable={turn !== "wait" && !pendingAbilityChoice && !playerUsed[index]}
                   selected={selectedIndices.includes(index)}
                   onClick={() => toggleOwnBit(index)}

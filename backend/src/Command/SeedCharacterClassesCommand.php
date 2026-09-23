@@ -97,6 +97,8 @@ class SeedCharacterClassesCommand extends Command
                     BitFace::from($bitDefinition['faceB']),
                     $bitDefinition['advantageA'] ?? false,
                     $bitDefinition['advantageB'] ?? false,
+                    $bitDefinition['multiplierA'] ?? 1,
+                    $bitDefinition['multiplierB'] ?? 1,
                 );
                 $this->entityManager->persist($templateBit);
                 $characterClass->addStarterBit($templateBit);

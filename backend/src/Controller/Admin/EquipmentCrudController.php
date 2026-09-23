@@ -53,6 +53,8 @@ class EquipmentCrudController extends AbstractCrudController
         yield ChoiceField::new('bitFaceB', 'Грань B (для bit)')->hideOnIndex();
         yield BooleanField::new('bitAdvantageA', 'Преимущество на A (для bit)')->hideOnIndex();
         yield BooleanField::new('bitAdvantageB', 'Преимущество на B (для bit)')->hideOnIndex();
+        yield IntegerField::new('bitMultiplierA', 'Множитель на A (для bit)')->hideOnIndex();
+        yield IntegerField::new('bitMultiplierB', 'Множитель на B (для bit)')->hideOnIndex();
         yield IntegerField::new('hpBonus', 'Бонус HP (для hp)')->hideOnIndex();
         yield AssociationField::new('grantedAbility', 'Даёт способность')->hideOnIndex();
         yield ImageField::new('iconName', 'Иконка')

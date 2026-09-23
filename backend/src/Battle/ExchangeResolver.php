@@ -87,7 +87,7 @@ final class ExchangeResolver
             $leaderMove = $this->chooseLeadMove($leaderIsPlayer);
             $this->markUsed($leaderIsPlayer, $leaderMove->face, $leaderMove->count);
             $leaderBonus = BitFace::Action === $leaderMove->face
-                ? $this->applyActionAbility($leaderIsPlayer, $leaderMove->count, $leaderChoice)
+                ? $this->applyActionAbility($leaderIsPlayer, $leaderMove->amount, $leaderChoice)
                 : 0;
 
             $responderMove = $this->chooseResponseMove(!$leaderIsPlayer, $leaderMove);
@@ -95,14 +95,14 @@ final class ExchangeResolver
             if (null !== $responderMove) {
                 $this->markUsed(!$leaderIsPlayer, $responderMove->face, $responderMove->count);
                 if (BitFace::Action === $responderMove->face) {
-                    $responderBonus = $this->applyActionAbility(!$leaderIsPlayer, $responderMove->count, $responderChoice);
+                    $responderBonus = $this->applyActionAbility(!$leaderIsPlayer, $responderMove->amount, $responderChoice);
                 }
             }
 
-            $leaderAttack = BitFace::Attack === $leaderMove->face ? $leaderMove->count : 0;
-            $leaderDefense = BitFace::Defense === $leaderMove->face ? $leaderMove->count : 0;
-            $responderAttack = null !== $responderMove && BitFace::Attack === $responderMove->face ? $responderMove->count : 0;
-            $responderDefense = null !== $responderMove && BitFace::Defense === $responderMove->face ? $responderMove->count : 0;
+            $leaderAttack = BitFace::Attack === $leaderMove->face ? $leaderMove->amount : 0;
+            $leaderDefense = BitFace::Defense === $leaderMove->face ? $leaderMove->amount : 0;
+            $responderAttack = null !== $responderMove && BitFace::Attack === $responderMove->face ? $responderMove->amount : 0;
+            $responderDefense = null !== $responderMove && BitFace::Defense === $responderMove->face ? $responderMove->amount : 0;
 
             $damageToResponderSide = max(0, $leaderAttack - $responderDefense) + $leaderBonus;
             $damageToLeaderSide = max(0, $responderAttack - $leaderDefense) + $responderBonus;
@@ -128,9 +128,9 @@ final class ExchangeResolver
             $this->exchanges[] = new Exchange(
                 $leaderIsPlayer,
                 $leaderMove->face,
-                $leaderMove->count,
+                $leaderMove->amount,
                 $responderMove?->face,
-                $responderMove?->count ?? 0,
+                $responderMove?->amount ?? 0,
                 $exchangeDamageToPlayer,
                 $exchangeDamageToOpponent,
             );
@@ -168,9 +168,9 @@ final class ExchangeResolver
     private function chooseLeadMove(bool $isPlayerSide): Move
     {
         foreach ([BitFace::Attack, BitFace::Action, BitFace::Defense] as $face) {
-            $count = $this->remainingCountByFace($isPlayerSide, $face);
-            if ($count > 0) {
-                return new Move($face, $count);
+            $gathered = $this->gatherByFace($isPlayerSide, $face);
+            if ($gathered['count'] > 0) {
+                return new Move($face, $gathered['count'], $gathered['amount']);
             }
         }
 
@@ -180,11 +180,11 @@ final class ExchangeResolver
     private function chooseResponseMove(bool $isPlayerSide, Move $incoming): ?Move
     {
         if (BitFace::Attack === $incoming->face) {
-            $defenseCount = $this->remainingCountByFace($isPlayerSide, BitFace::Defense);
-            if ($defenseCount > 0) {
-                // Only commit as much defense as actually needed to block —
-                // no reason to burn a whole reserve blocking one attack.
-                return new Move(BitFace::Defense, min($defenseCount, $incoming->count));
+            // Only commit as much defense as actually needed to block — no
+            // reason to burn a whole reserve blocking one small attack.
+            $gathered = $this->gatherByFace($isPlayerSide, BitFace::Defense, $incoming->amount);
+            if ($gathered['count'] > 0) {
+                return new Move(BitFace::Defense, $gathered['count'], $gathered['amount']);
             }
         }
 
@@ -196,22 +196,26 @@ final class ExchangeResolver
     }
 
     /**
+     * @param int $amount action points banked this move — sum of the
+     *                    activated action bits' multipliers, not a literal
+     *                    bit count
+     *
      * @return int bonus unblockable damage to apply to the OTHER side (0
      *             for Flip/Reroll/DamageMirror, whose effects aren't direct damage)
      */
-    private function applyActionAbility(bool $isActingSidePlayer, int $count, AbilityChoice $choice): int
+    private function applyActionAbility(bool $isActingSidePlayer, int $amount, AbilityChoice $choice): int
     {
         $alreadyTriggered = $isActingSidePlayer ? $this->playerAbilityTriggered : $this->opponentAbilityTriggered;
 
         if ($alreadyTriggered || AbilityType::Flip === $choice->ability) {
-            return $this->applyFlip($isActingSidePlayer, $count, $choice->targets);
+            return $this->applyFlip($isActingSidePlayer, $amount, $choice->targets);
         }
 
-        $cost = $choice->ability->fixedCost() ?? $count;
-        if ($count < $cost) {
+        $cost = $choice->ability->fixedCost() ?? $amount;
+        if ($amount < $cost) {
             // Not enough banked in this single move to actually afford it —
             // a later move this round may have enough; for now just flip.
-            return $this->applyFlip($isActingSidePlayer, $count, $choice->targets);
+            return $this->applyFlip($isActingSidePlayer, $amount, $choice->targets);
         }
 
         if ($isActingSidePlayer) {
@@ -230,7 +234,7 @@ final class ExchangeResolver
         // Any action points activated in this same move beyond the
         // ability's fixed cost (e.g. DamageMirror costs 2 but 3 were
         // activated at once) fall back to a Flip on the remainder.
-        $leftover = $count - $cost;
+        $leftover = $amount - $cost;
         if ($leftover > 0) {
             $bonus += $this->applyFlip($isActingSidePlayer, $leftover, $choice->targets);
         }
@@ -308,13 +312,13 @@ final class ExchangeResolver
         if ($isActingSidePlayer) {
             foreach ($this->playerThrows as $i => $throw) {
                 if (!$this->playerUsed[$i]) {
-                    $this->playerThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB);
+                    $this->playerThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB);
                 }
             }
         } else {
             foreach ($this->opponentThrows as $i => $throw) {
                 if (!$this->opponentUsed[$i]) {
-                    $this->opponentThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB);
+                    $this->opponentThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB);
                 }
             }
         }
@@ -356,19 +360,37 @@ final class ExchangeResolver
         }
     }
 
-    private function remainingCountByFace(bool $isPlayerSide, BitFace $face): int
+    /**
+     * Greedily gathers unused bits of $face in throw order — until running
+     * out, or (if $maxAmount is given) until the combined multiplier
+     * reaches or exceeds it. Always takes at least one whole bit if any are
+     * available and $maxAmount hasn't already been reached, even if that
+     * bit alone overshoots $maxAmount — bits can't be partially activated,
+     * and overshooting (more defense than the incoming attack needs) is
+     * harmless, unlike stopping short.
+     *
+     * @return array{count: int, amount: int} count = number of bit objects
+     *         (for marking them used), amount = sum of their multipliers
+     *         (for damage/blocking/action-points/ability-cost)
+     */
+    private function gatherByFace(bool $isPlayerSide, BitFace $face, ?int $maxAmount = null): array
     {
         $throws = $isPlayerSide ? $this->playerThrows : $this->opponentThrows;
         $used = $isPlayerSide ? $this->playerUsed : $this->opponentUsed;
 
         $count = 0;
+        $amount = 0;
         foreach ($throws as $i => $throw) {
+            if (null !== $maxAmount && $amount >= $maxAmount) {
+                break;
+            }
             if (!$used[$i] && $throw->thrownFace === $face) {
                 ++$count;
+                $amount += $throw->thrownMultiplier;
             }
         }
 
-        return $count;
+        return ['count' => $count, 'amount' => $amount];
     }
 
     private function remainingCount(bool $isPlayerSide): int

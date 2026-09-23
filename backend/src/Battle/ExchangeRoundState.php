@@ -78,19 +78,37 @@ final class ExchangeRoundState
         return \count(array_filter($used, static fn (bool $u) => !$u));
     }
 
-    public function remainingCountByFace(bool $isPlayerSide, BitFace $face): int
+    /**
+     * Greedily gathers unused bits of $face in throw order — until running
+     * out, or (if $maxAmount is given) until the combined multiplier
+     * reaches or exceeds it. Always takes at least one whole bit if any are
+     * available and $maxAmount hasn't already been reached, even if that
+     * bit alone overshoots $maxAmount — bits can't be partially activated,
+     * and overshooting (more defense than the incoming attack needs) is
+     * harmless, unlike stopping short.
+     *
+     * @return array{count: int, amount: int} count = number of bit objects
+     *         (for marking them used), amount = sum of their multipliers
+     *         (for damage/blocking/action-points/ability-cost)
+     */
+    public function gatherByFace(bool $isPlayerSide, BitFace $face, ?int $maxAmount = null): array
     {
         $throws = $isPlayerSide ? $this->playerThrows : $this->opponentThrows;
         $used = $isPlayerSide ? $this->playerUsed : $this->opponentUsed;
 
         $count = 0;
+        $amount = 0;
         foreach ($throws as $i => $throw) {
+            if (null !== $maxAmount && $amount >= $maxAmount) {
+                break;
+            }
             if (!$used[$i] && $throw->thrownFace === $face) {
                 ++$count;
+                $amount += $throw->thrownMultiplier;
             }
         }
 
-        return $count;
+        return ['count' => $count, 'amount' => $amount];
     }
 
     /**

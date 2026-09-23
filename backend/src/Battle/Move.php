@@ -12,7 +12,10 @@ final class Move
 {
     public function __construct(
         public readonly BitFace $face,
+        /** Literal number of bit objects activated — only used to mark the right amount of bits as spent. */
         public readonly int $count,
+        /** Sum of those bits' multipliers — what actually drives damage/blocking/action-points/ability-cost. */
+        public readonly int $amount,
     ) {
     }
 }

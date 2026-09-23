@@ -227,12 +227,12 @@ class BattleService
         }
 
         $playerThrows = array_map(
-            static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()),
+            static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB(), $bit->getMultiplierA(), $bit->getMultiplierB()),
             $battle->getCharacter()->getAllBits(),
         );
         $opponentThrows = $battle->isPvp()
             ? array_map(
-                static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()),
+                static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB(), $bit->getMultiplierA(), $bit->getMultiplierB()),
                 $battle->getOpponentCharacter()->getAllBits(),
             )
             : $this->opponentBitThrows($battle);
@@ -284,7 +284,7 @@ class BattleService
         }
 
         return array_map(
-            static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()),
+            static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB(), $bit->getMultiplierA(), $bit->getMultiplierB()),
             $monsterBits,
         );
     }
@@ -466,11 +466,13 @@ class BattleService
             $knockedOut = $this->isBattleKnockedOut($battle);
         }
 
-        // Faces can change mid-round (Flip) and are captured here regardless
-        // of which branch below runs — the client needs the current values,
-        // not just the ones from the original throw.
+        // Faces (and their multipliers) can change mid-round (Flip) and are
+        // captured here regardless of which branch below runs — the client
+        // needs the current values, not just the ones from the original throw.
         $playerFaces = array_map(static fn (BitThrow $t) => $t->thrownFace->value, $state->playerThrows);
         $opponentFaces = array_map(static fn (BitThrow $t) => $t->thrownFace->value, $state->opponentThrows);
+        $playerMultipliers = array_map(static fn (BitThrow $t) => $t->thrownMultiplier, $state->playerThrows);
+        $opponentMultipliers = array_map(static fn (BitThrow $t) => $t->thrownMultiplier, $state->opponentThrows);
 
         if ($knockedOut || $state->isOver()) {
             $round = $this->finalizeInteractiveRound($battle, $state);
@@ -482,6 +484,8 @@ class BattleService
                 opponentFaces: $opponentFaces,
                 playerUsed: $state->playerUsed,
                 opponentUsed: $state->opponentUsed,
+                playerMultipliers: $playerMultipliers,
+                opponentMultipliers: $opponentMultipliers,
                 round: $round,
             );
         }
@@ -498,6 +502,8 @@ class BattleService
             opponentFaces: $opponentFaces,
             playerUsed: $state->playerUsed,
             opponentUsed: $state->opponentUsed,
+            playerMultipliers: $playerMultipliers,
+            opponentMultipliers: $opponentMultipliers,
             turn: $turnNow,
             incomingMove: null !== $state->pendingLeaderMove ? $this->interactiveEngine->getIncomingMove($state) : null,
         );
@@ -567,6 +573,8 @@ class BattleService
             opponentFaces: array_map(static fn (BitThrow $t) => $t->thrownFace->value, $state->opponentThrows),
             playerUsed: $state->playerUsed,
             opponentUsed: $state->opponentUsed,
+            playerMultipliers: array_map(static fn (BitThrow $t) => $t->thrownMultiplier, $state->playerThrows),
+            opponentMultipliers: array_map(static fn (BitThrow $t) => $t->thrownMultiplier, $state->opponentThrows),
             turn: $turnNow,
             incomingMove: null !== $state->pendingLeaderMove ? $this->interactiveEngine->getIncomingMove($state) : null,
         );
@@ -583,6 +591,8 @@ class BattleService
             opponentFaces: array_map(static fn (BitThrow $t) => $t->thrownFace->value, $state->opponentThrows),
             playerUsed: $state->playerUsed,
             opponentUsed: $state->opponentUsed,
+            playerMultipliers: array_map(static fn (BitThrow $t) => $t->thrownMultiplier, $state->playerThrows),
+            opponentMultipliers: array_map(static fn (BitThrow $t) => $t->thrownMultiplier, $state->opponentThrows),
             round: $round,
         );
     }

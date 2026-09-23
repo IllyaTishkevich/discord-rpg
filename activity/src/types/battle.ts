@@ -41,6 +41,10 @@ export interface IncomingMove {
 export interface ThrowResult {
   playerFaces: BitFace[];
   opponentFaces: BitFace[];
+  // Damage/blocking/action-points each currently-shown face is worth — same
+  // index order as the faces above, 1 for an ordinary bit.
+  playerMultipliers: number[];
+  opponentMultipliers: number[];
   playerActionCount: number;
   // Interactive exchange flow (docs/COMBAT_V2_DESIGN.md §7-8) — populated
   // for PvE/event and PvP alike.
@@ -53,6 +57,8 @@ export interface ThrowResult {
 export interface Exchange {
   leaderIsPlayer: boolean;
   leaderFace: BitFace;
+  // Despite the name, this is the effective amount (sum of the activated
+  // bits' multipliers) that drove the damage below, not a literal bit tally.
   leaderCount: number;
   responderFace: BitFace | null;
   responderCount: number;
@@ -86,6 +92,8 @@ export interface ExchangeMoveResponse {
   opponentFaces: BitFace[];
   playerUsed: boolean[];
   opponentUsed: boolean[];
+  playerMultipliers: number[];
+  opponentMultipliers: number[];
   round?: RoundResult;
   turn?: ExchangeTurn;
   incomingMove?: IncomingMove | null;

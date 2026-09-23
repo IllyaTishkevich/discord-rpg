@@ -48,7 +48,7 @@ final class AbilityResolver
             return $throws;
         }
 
-        return array_map(static fn (BitThrow $t) => BitThrow::random($t->faceA, $t->faceB), $throws);
+        return array_map(static fn (BitThrow $t) => BitThrow::random($t->faceA, $t->faceB, multiplierA: $t->multiplierA, multiplierB: $t->multiplierB), $throws);
     }
 
     /**

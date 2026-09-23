@@ -11,6 +11,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ImageField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use Vich\UploaderBundle\Form\Type\VichImageType;
 
 class BitCrudController extends AbstractCrudController
@@ -37,6 +38,10 @@ class BitCrudController extends AbstractCrudController
         yield ChoiceField::new('faceB', 'Грань B');
         yield BooleanField::new('advantageA', 'Преимущество на A');
         yield BooleanField::new('advantageB', 'Преимущество на B');
+        // Damage/blocking/action-points this face is worth — 1 is the
+        // default ("normal" bit); see Bit::$multiplierA's docblock.
+        yield IntegerField::new('multiplierA', 'Множитель A');
+        yield IntegerField::new('multiplierB', 'Множитель B');
         yield ImageField::new('iconAName', 'Иконка A')
             ->setBasePath('/uploads/bits')
             ->onlyOnIndex();

@@ -26,6 +26,8 @@ class CharacterClassController extends AbstractApiController
                         'faceB' => $bit->getFaceB()->value,
                         'advantageA' => $bit->hasAdvantageA(),
                         'advantageB' => $bit->hasAdvantageB(),
+                        'multiplierA' => $bit->getMultiplierA(),
+                        'multiplierB' => $bit->getMultiplierB(),
                     ],
                     $class->getStarterBits()->toArray(),
                 ),

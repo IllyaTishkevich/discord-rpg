@@ -188,13 +188,12 @@ final class InteractiveExchangeEngine
         }
 
         $state->leaderIsPlayer = $isPlayerSide;
-        $face = $this->validateAndConsumeMove($state, $isPlayerSide, $indices);
-        $count = \count($indices);
+        ['face' => $face, 'amount' => $amount] = $this->validateAndConsumeMove($state, $isPlayerSide, $indices);
         $bonus = BitFace::Action === $face
-            ? $this->applyActionAbility($state, $isPlayerSide, $count, $ability ?? AbilityChoice::flip())
+            ? $this->applyActionAbility($state, $isPlayerSide, $amount, $ability ?? AbilityChoice::flip())
             : 0;
 
-        $state->pendingLeaderMove = ['face' => $face->value, 'count' => $count, 'bonus' => $bonus];
+        $state->pendingLeaderMove = ['face' => $face->value, 'count' => $amount, 'bonus' => $bonus];
 
         return $state;
     }
@@ -232,23 +231,22 @@ final class InteractiveExchangeEngine
 
         $leaderMove = $state->pendingLeaderMove;
         $leaderFace = BitFace::from($leaderMove['face']);
-        $leaderCount = $leaderMove['count'];
+        $leaderAmount = $leaderMove['count'];
         $leaderBonus = $leaderMove['bonus'];
 
         $responderFace = null;
-        $responderCount = 0;
+        $responderAmount = 0;
         $responderBonus = 0;
         if ([] !== $indices) {
-            $responderFace = $this->validateAndConsumeMove($state, $isPlayerSide, $indices);
-            $responderCount = \count($indices);
+            ['face' => $responderFace, 'amount' => $responderAmount] = $this->validateAndConsumeMove($state, $isPlayerSide, $indices);
             if (BitFace::Action === $responderFace) {
-                $responderBonus = $this->applyActionAbility($state, $isPlayerSide, $responderCount, $ability ?? AbilityChoice::flip());
+                $responderBonus = $this->applyActionAbility($state, $isPlayerSide, $responderAmount, $ability ?? AbilityChoice::flip());
             }
         }
 
-        $responderMove = null === $responderFace ? null : ['face' => $responderFace, 'count' => $responderCount];
+        $responderMove = null === $responderFace ? null : ['face' => $responderFace, 'amount' => $responderAmount];
         $leaderIsPlayerForExchange = !$isPlayerSide;
-        $exchange = $this->resolveExchange($state, $leaderIsPlayerForExchange, $leaderFace, $leaderCount, $leaderBonus, $responderMove, $responderBonus);
+        $exchange = $this->resolveExchange($state, $leaderIsPlayerForExchange, $leaderFace, $leaderAmount, $leaderBonus, $responderMove, $responderBonus);
         $state->pendingLeaderMove = null;
         $state->leaderIsPlayer = $isPlayerSide;
 
@@ -284,22 +282,21 @@ final class InteractiveExchangeEngine
             throw new InvalidExchangeMoveException('It is not your turn to lead this exchange.');
         }
 
-        $face = $this->validateAndConsumeMove($state, true, $indices);
-        $count = \count($indices);
+        ['face' => $face, 'amount' => $amount] = $this->validateAndConsumeMove($state, true, $indices);
         $leaderBonus = BitFace::Action === $face
-            ? $this->applyActionAbility($state, true, $count, $ability ?? AbilityChoice::flip())
+            ? $this->applyActionAbility($state, true, $amount, $ability ?? AbilityChoice::flip())
             : 0;
 
-        $responderMove = $this->chooseResponseMove($state, false, $face, $count);
+        $responderMove = $this->chooseResponseMove($state, false, $face, $amount);
         $responderBonus = 0;
         if (null !== $responderMove) {
             $this->markUsed($state, false, $responderMove['face'], $responderMove['count']);
             if (BitFace::Action === $responderMove['face']) {
-                $responderBonus = $this->applyActionAbility($state, false, $responderMove['count'], $botChoice);
+                $responderBonus = $this->applyActionAbility($state, false, $responderMove['amount'], $botChoice);
             }
         }
 
-        $exchange = $this->resolveExchange($state, true, $face, $count, $leaderBonus, $responderMove, $responderBonus);
+        $exchange = $this->resolveExchange($state, true, $face, $amount, $leaderBonus, $responderMove, $responderBonus);
         $state->leaderIsPlayer = false;
 
         return ['state' => $state, 'exchange' => $exchange];
@@ -322,22 +319,21 @@ final class InteractiveExchangeEngine
 
         $leaderMove = $state->pendingLeaderMove;
         $leaderFace = BitFace::from($leaderMove['face']);
-        $leaderCount = $leaderMove['count'];
+        $leaderAmount = $leaderMove['count'];
         $leaderBonus = $leaderMove['bonus'];
 
         $responderFace = null;
-        $responderCount = 0;
+        $responderAmount = 0;
         $responderBonus = 0;
         if (\count($indices) > 0) {
-            $responderFace = $this->validateAndConsumeMove($state, true, $indices);
-            $responderCount = \count($indices);
+            ['face' => $responderFace, 'amount' => $responderAmount] = $this->validateAndConsumeMove($state, true, $indices);
             if (BitFace::Action === $responderFace) {
-                $responderBonus = $this->applyActionAbility($state, true, $responderCount, $ability ?? AbilityChoice::flip());
+                $responderBonus = $this->applyActionAbility($state, true, $responderAmount, $ability ?? AbilityChoice::flip());
             }
         }
 
-        $responderMove = null === $responderFace ? null : ['face' => $responderFace, 'count' => $responderCount];
-        $exchange = $this->resolveExchange($state, false, $leaderFace, $leaderCount, $leaderBonus, $responderMove, $responderBonus);
+        $responderMove = null === $responderFace ? null : ['face' => $responderFace, 'amount' => $responderAmount];
+        $exchange = $this->resolveExchange($state, false, $leaderFace, $leaderAmount, $leaderBonus, $responderMove, $responderBonus);
         $state->pendingLeaderMove = null;
         $state->leaderIsPlayer = true;
 
@@ -374,14 +370,14 @@ final class InteractiveExchangeEngine
         $leaderMove = $this->chooseLeadMove($state, false);
         $this->markUsed($state, false, $leaderMove['face'], $leaderMove['count']);
         $leaderBonus = BitFace::Action === $leaderMove['face']
-            ? $this->applyActionAbility($state, false, $leaderMove['count'], $botChoice)
+            ? $this->applyActionAbility($state, false, $leaderMove['amount'], $botChoice)
             : 0;
 
         if ($state->remainingCount(true) > 0) {
             // Player can respond — pause here and let the caller ask them.
             $state->pendingLeaderMove = [
                 'face' => $leaderMove['face']->value,
-                'count' => $leaderMove['count'],
+                'count' => $leaderMove['amount'],
                 'bonus' => $leaderBonus,
             ];
 
@@ -389,7 +385,7 @@ final class InteractiveExchangeEngine
         }
 
         // Player has nothing left to respond with — resolve unopposed.
-        $exchange = $this->resolveExchange($state, false, $leaderMove['face'], $leaderMove['count'], $leaderBonus, null, 0);
+        $exchange = $this->resolveExchange($state, false, $leaderMove['face'], $leaderMove['amount'], $leaderBonus, null, 0);
         $state->leaderIsPlayer = true;
 
         return ['state' => $state, 'exchange' => $exchange];
@@ -397,8 +393,10 @@ final class InteractiveExchangeEngine
 
     /**
      * @param int[] $indices
+     *
+     * @return array{face: BitFace, amount: int}
      */
-    private function validateAndConsumeMove(ExchangeRoundState $state, bool $isPlayerSide, array $indices): BitFace
+    private function validateAndConsumeMove(ExchangeRoundState $state, bool $isPlayerSide, array $indices): array
     {
         if ([] === $indices) {
             throw new InvalidExchangeMoveException('At least one bit must be selected to lead or respond.');
@@ -408,7 +406,9 @@ final class InteractiveExchangeEngine
         $used = $isPlayerSide ? $state->playerUsed : $state->opponentUsed;
 
         $face = null;
-        foreach (array_unique($indices) as $index) {
+        $amount = 0;
+        $uniqueIndices = array_unique($indices);
+        foreach ($uniqueIndices as $index) {
             if (!isset($throws[$index]) || ($used[$index] ?? true)) {
                 throw new InvalidExchangeMoveException(\sprintf('Bit index %d is invalid or already used.', $index));
             }
@@ -417,19 +417,37 @@ final class InteractiveExchangeEngine
             } elseif ($face !== $throws[$index]->thrownFace) {
                 throw new InvalidExchangeMoveException('All selected bits must show the same face.');
             }
+            $amount += $throws[$index]->thrownMultiplier;
         }
 
-        $this->markUsed($state, $isPlayerSide, $face, \count(array_unique($indices)));
+        // Mark exactly the chosen indices — NOT the generic "first N unused
+        // of this face" scan that markUsed() does for the bot's own moves.
+        // Those are interchangeable when picking for itself; a real player
+        // picked *these specific* bits, and now that different bits of the
+        // same face can carry different multipliers, marking the wrong
+        // ones used would desync the board from what the player actually
+        // selected (the bit they picked would stay selectable, and some
+        // other untouched bit would incorrectly go dark).
+        foreach ($uniqueIndices as $index) {
+            if ($isPlayerSide) {
+                $state->playerUsed[$index] = true;
+            } else {
+                $state->opponentUsed[$index] = true;
+            }
+        }
 
-        return $face;
+        return ['face' => $face, 'amount' => $amount];
     }
 
+    /**
+     * @return array{face: BitFace, count: int, amount: int}
+     */
     private function chooseLeadMove(ExchangeRoundState $state, bool $isPlayerSide): array
     {
         foreach ([BitFace::Attack, BitFace::Action, BitFace::Defense] as $face) {
-            $count = $state->remainingCountByFace($isPlayerSide, $face);
-            if ($count > 0) {
-                return ['face' => $face, 'count' => $count];
+            $gathered = $state->gatherByFace($isPlayerSide, $face);
+            if ($gathered['count'] > 0) {
+                return ['face' => $face, 'count' => $gathered['count'], 'amount' => $gathered['amount']];
             }
         }
 
@@ -437,14 +455,16 @@ final class InteractiveExchangeEngine
     }
 
     /**
-     * @return array{face: BitFace, count: int}|null
+     * @return array{face: BitFace, count: int, amount: int}|null
      */
-    private function chooseResponseMove(ExchangeRoundState $state, bool $isPlayerSide, BitFace $incomingFace, int $incomingCount): ?array
+    private function chooseResponseMove(ExchangeRoundState $state, bool $isPlayerSide, BitFace $incomingFace, int $incomingAmount): ?array
     {
         if (BitFace::Attack === $incomingFace) {
-            $defenseCount = $state->remainingCountByFace($isPlayerSide, BitFace::Defense);
-            if ($defenseCount > 0) {
-                return ['face' => BitFace::Defense, 'count' => min($defenseCount, $incomingCount)];
+            // Only commit as much defense as actually needed to block — no
+            // reason to burn a whole reserve blocking one small attack.
+            $gathered = $state->gatherByFace($isPlayerSide, BitFace::Defense, $incomingAmount);
+            if ($gathered['count'] > 0) {
+                return ['face' => BitFace::Defense, 'count' => $gathered['count'], 'amount' => $gathered['amount']];
             }
         }
 
@@ -456,7 +476,7 @@ final class InteractiveExchangeEngine
     }
 
     /**
-     * @param array{face: BitFace, count: int}|null $responderMove
+     * @param array{face: BitFace, count: int, amount: int}|null $responderMove
      *
      * @return array{leaderIsPlayer: bool, leaderFace: string, leaderCount: int, responderFace: ?string, responderCount: int, damageToPlayer: int, damageToOpponent: int}
      */
@@ -464,15 +484,15 @@ final class InteractiveExchangeEngine
         ExchangeRoundState $state,
         bool $leaderIsPlayer,
         BitFace $leaderFace,
-        int $leaderCount,
+        int $leaderAmount,
         int $leaderBonus,
         ?array $responderMove,
         int $responderBonus,
     ): array {
-        $leaderAttack = BitFace::Attack === $leaderFace ? $leaderCount : 0;
-        $leaderDefense = BitFace::Defense === $leaderFace ? $leaderCount : 0;
-        $responderAttack = null !== $responderMove && BitFace::Attack === $responderMove['face'] ? $responderMove['count'] : 0;
-        $responderDefense = null !== $responderMove && BitFace::Defense === $responderMove['face'] ? $responderMove['count'] : 0;
+        $leaderAttack = BitFace::Attack === $leaderFace ? $leaderAmount : 0;
+        $leaderDefense = BitFace::Defense === $leaderFace ? $leaderAmount : 0;
+        $responderAttack = null !== $responderMove && BitFace::Attack === $responderMove['face'] ? $responderMove['amount'] : 0;
+        $responderDefense = null !== $responderMove && BitFace::Defense === $responderMove['face'] ? $responderMove['amount'] : 0;
 
         $damageToResponderSide = max(0, $leaderAttack - $responderDefense) + $leaderBonus;
         $damageToLeaderSide = max(0, $responderAttack - $leaderDefense) + $responderBonus;
@@ -493,9 +513,15 @@ final class InteractiveExchangeEngine
         $exchange = [
             'leaderIsPlayer' => $leaderIsPlayer,
             'leaderFace' => $leaderFace->value,
-            'leaderCount' => $leaderCount,
+            // NB: "count" here (and on responderCount below) means the
+            // effective amount (sum of activated bits' multipliers), not a
+            // literal bit tally — matches what actually drove the damage
+            // above. Kept as "count" rather than renamed to "amount" so
+            // already-persisted BattleRound.exchanges / in-flight
+            // Battle.pendingExchangeState JSON stays shape-compatible.
+            'leaderCount' => $leaderAmount,
             'responderFace' => null !== $responderMove ? $responderMove['face']->value : null,
-            'responderCount' => $responderMove['count'] ?? 0,
+            'responderCount' => $responderMove['amount'] ?? 0,
             'damageToPlayer' => $exchangeDamageToPlayer,
             'damageToOpponent' => $exchangeDamageToOpponent,
         ];
@@ -506,20 +532,24 @@ final class InteractiveExchangeEngine
     }
 
     /**
+     * @param int $amount action points banked this move — sum of the
+     *                    activated action bits' multipliers, not a literal
+     *                    bit count
+     *
      * @return int bonus unblockable damage to apply to the OTHER side (0
      *             for Flip/Reroll/DamageMirror, whose effects aren't direct damage)
      */
-    private function applyActionAbility(ExchangeRoundState $state, bool $isActingSidePlayer, int $count, AbilityChoice $choice): int
+    private function applyActionAbility(ExchangeRoundState $state, bool $isActingSidePlayer, int $amount, AbilityChoice $choice): int
     {
         $alreadyTriggered = $isActingSidePlayer ? $state->playerAbilityTriggered : $state->opponentAbilityTriggered;
 
         if ($alreadyTriggered || AbilityType::Flip === $choice->ability) {
-            return $this->applyFlip($state, $isActingSidePlayer, $count, $choice->targets);
+            return $this->applyFlip($state, $isActingSidePlayer, $amount, $choice->targets);
         }
 
-        $cost = $choice->ability->fixedCost() ?? $count;
-        if ($count < $cost) {
-            return $this->applyFlip($state, $isActingSidePlayer, $count, $choice->targets);
+        $cost = $choice->ability->fixedCost() ?? $amount;
+        if ($amount < $cost) {
+            return $this->applyFlip($state, $isActingSidePlayer, $amount, $choice->targets);
         }
 
         if ($isActingSidePlayer) {
@@ -535,7 +565,7 @@ final class InteractiveExchangeEngine
             AbilityType::Flip => 0, // unreachable — handled above
         };
 
-        $leftover = $count - $cost;
+        $leftover = $amount - $cost;
         if ($leftover > 0) {
             $bonus += $this->applyFlip($state, $isActingSidePlayer, $leftover, $choice->targets);
         }
@@ -606,13 +636,13 @@ final class InteractiveExchangeEngine
         if ($isActingSidePlayer) {
             foreach ($state->playerThrows as $i => $throw) {
                 if (!$state->playerUsed[$i]) {
-                    $state->playerThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB);
+                    $state->playerThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB);
                 }
             }
         } else {
             foreach ($state->opponentThrows as $i => $throw) {
                 if (!$state->opponentUsed[$i]) {
-                    $state->opponentThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB);
+                    $state->opponentThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB);
                 }
             }
         }

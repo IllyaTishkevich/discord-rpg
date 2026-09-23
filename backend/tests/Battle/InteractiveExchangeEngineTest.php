@@ -12,9 +12,9 @@ use PHPUnit\Framework\TestCase;
 
 class InteractiveExchangeEngineTest extends TestCase
 {
-    private function bit(BitFace $face, bool $advantage = false): BitThrow
+    private function bit(BitFace $face, bool $advantage = false, int $multiplier = 1): BitThrow
     {
-        return new BitThrow($face, $face, $advantage, $advantage, $face, $advantage);
+        return new BitThrow($face, $face, $advantage, $advantage, $face, $advantage, $multiplier, $multiplier, $multiplier);
     }
 
     public function testPlayerLeadsAndBotRespondsInOneCall(): void
@@ -278,5 +278,83 @@ class InteractiveExchangeEngineTest extends TestCase
         ['state' => $state, 'exchange' => $exchange] = $engine->submitPvpRespond($state, false, [], null);
         self::assertSame(1, $exchange['damageToOpponent']);
         self::assertTrue($state->isOver());
+    }
+
+    // -----------------------------------------------------------------
+    // Multiplier: a face's damage/blocking/action-point contribution is
+    // its multiplier, not a flat 1 per activated bit.
+    // -----------------------------------------------------------------
+
+    public function testMultipliedLeadDealsDamageEqualToItsMultiplier(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Attack, advantage: true, multiplier: 3)],
+            [$this->bit(BitFace::Defense)],
+        );
+
+        ['exchange' => $exchange] = $engine->submitLead($state, [0], null, AbilityChoice::flip());
+
+        // ×3 attack vs a single (×1) defense: 3 - 1 = 2 gets through.
+        self::assertSame(2, $exchange['damageToOpponent']);
+    }
+
+    public function testMultipliedResponseBlocksProportionally(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Defense, multiplier: 3)],
+            [$this->bit(BitFace::Attack, advantage: true, multiplier: 3)],
+        );
+
+        self::assertSame('respond', $engine->currentTurn($state));
+
+        ['exchange' => $exchange] = $engine->submitRespond($state, [0], null);
+
+        // A single ×3 defense bit fully blocks a ×3 attack.
+        self::assertSame(0, $exchange['damageToPlayer']);
+    }
+
+    public function testMultipliedActionFaceGrantsProportionalActionPoints(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Action, advantage: true, multiplier: 2)],
+            [$this->bit(BitFace::Attack)],
+        );
+
+        ['exchange' => $exchange] = $engine->submitLead($state, [0], new AbilityChoice(AbilityType::UnblockableDamage), AbilityChoice::flip());
+
+        // A single ×2 action bit banks 2 action points — enough to afford
+        // UnblockableDamage's fixed cost of 2 (not 1, which a literal
+        // bit-count would have given).
+        self::assertSame(2, $exchange['damageToOpponent']);
+    }
+
+    /**
+     * Regression test for a real bug this multiplier work surfaced:
+     * validateAndConsumeMove() used to mark the generic "first N unused
+     * bits of this face" as used, rather than the *specific* indices the
+     * player actually selected — invisible when same-face bits were fully
+     * interchangeable, but wrong now that they can carry different
+     * multipliers (and always was a latent bug: the selected bit stayed
+     * "unused" while a different, unselected one silently went dark).
+     */
+    public function testSelectingASpecificBitMarksThatExactIndexUsedNotTheFirstMatchingOne(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        ['state' => $state] = $engine->startRound(
+            // Two attack bits with different multipliers, plus a defense
+            // bit for the bot so it doesn't resolve unopposed.
+            [$this->bit(BitFace::Attack, advantage: true, multiplier: 1), $this->bit(BitFace::Attack, multiplier: 5)],
+            [$this->bit(BitFace::Defense)],
+        );
+
+        // Explicitly lead with index 1 (the ×5 bit), not index 0.
+        ['state' => $state, 'exchange' => $exchange] = $engine->submitLead($state, [1], null, AbilityChoice::flip());
+
+        self::assertSame(4, $exchange['damageToOpponent'], 'damage must reflect the ×5 bit actually selected, not the ×1 one');
+        self::assertTrue($state->playerUsed[1], 'the selected index must be marked used');
+        self::assertFalse($state->playerUsed[0], 'the untouched index must remain available');
     }
 }

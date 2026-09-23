@@ -189,6 +189,8 @@ class BattleController extends AbstractApiController
                     'opponentFaces' => $result->opponentFaces,
                     'playerUsed' => $result->playerUsed,
                     'opponentUsed' => $result->opponentUsed,
+                    'playerMultipliers' => $result->playerMultipliers,
+                    'opponentMultipliers' => $result->opponentMultipliers,
                     'round' => $this->serializer->round($result->round),
                     'battle' => $this->serializer->battle($battle),
                 ]);
@@ -201,6 +203,8 @@ class BattleController extends AbstractApiController
                 'opponentFaces' => $result->opponentFaces,
                 'playerUsed' => $result->playerUsed,
                 'opponentUsed' => $result->opponentUsed,
+                'playerMultipliers' => $result->playerMultipliers,
+                'opponentMultipliers' => $result->opponentMultipliers,
                 'turn' => $result->turn,
                 'incomingMove' => $result->incomingMove,
                 'battle' => $this->serializer->battle($battle),

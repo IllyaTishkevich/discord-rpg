@@ -48,6 +48,21 @@ class Bit
     private bool $advantageB;
 
     /**
+     * How much this face is worth in an exchange — an "attack" face with
+     * multiplier 2 deals 2 damage (or blocks 2, or grants 2 action points,
+     * depending on the face) instead of the default 1. Independent of
+     * advantage. Defaults to 1 so every bit predating this field behaves
+     * exactly as before.
+     */
+    #[ORM\Column]
+    #[Assert\Positive(message: 'Множитель должен быть не меньше 1.')]
+    private int $multiplierA = 1;
+
+    #[ORM\Column]
+    #[Assert\Positive(message: 'Множитель должен быть не меньше 1.')]
+    private int $multiplierB = 1;
+
+    /**
      * Not persisted — Vich reads this on flush to store the file and fill
      * iconAName/iconASize, then clears it (see Monster::$iconFile).
      */
@@ -95,12 +110,20 @@ class Bit
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $iconBUpdatedAt = null;
 
-    public function __construct(BitFace $faceA, BitFace $faceB, bool $advantageA = false, bool $advantageB = false)
-    {
+    public function __construct(
+        BitFace $faceA,
+        BitFace $faceB,
+        bool $advantageA = false,
+        bool $advantageB = false,
+        int $multiplierA = 1,
+        int $multiplierB = 1,
+    ) {
         $this->faceA = $faceA;
         $this->faceB = $faceB;
         $this->advantageA = $advantageA;
         $this->advantageB = $advantageB;
+        $this->multiplierA = $multiplierA;
+        $this->multiplierB = $multiplierB;
     }
 
     public function getId(): ?int
@@ -152,6 +175,30 @@ class Bit
     public function setAdvantageB(bool $advantageB): static
     {
         $this->advantageB = $advantageB;
+
+        return $this;
+    }
+
+    public function getMultiplierA(): int
+    {
+        return $this->multiplierA;
+    }
+
+    public function setMultiplierA(int $multiplierA): static
+    {
+        $this->multiplierA = $multiplierA;
+
+        return $this;
+    }
+
+    public function getMultiplierB(): int
+    {
+        return $this->multiplierB;
+    }
+
+    public function setMultiplierB(int $multiplierB): static
+    {
+        $this->multiplierB = $multiplierB;
 
         return $this;
     }

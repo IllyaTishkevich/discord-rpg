@@ -28,6 +28,8 @@ class EquipmentService
                 $equipment->getBitFaceB(),
                 $equipment->hasBitAdvantageA(),
                 $equipment->hasBitAdvantageB(),
+                $equipment->getBitMultiplierA(),
+                $equipment->getBitMultiplierB(),
             );
             $this->entityManager->persist($bit);
             $character->addPurchasedBit($bit);

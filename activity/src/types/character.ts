@@ -5,6 +5,8 @@ export type BitFace = "attack" | "defense" | "action";
 export interface BitDefinition {
   faceA: BitFace;
   faceB: BitFace;
+  multiplierA?: number;
+  multiplierB?: number;
 }
 
 export interface CharacterClassSummary {
