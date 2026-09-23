@@ -21,7 +21,8 @@
         "symfony/http-client": "6.4.*",
         "symfony/runtime": "6.4.*",
         "symfony/security-bundle": "6.4.*",
-        "symfony/yaml": "6.4.*"
+        "symfony/yaml": "6.4.*",
+        "vich/uploader-bundle": "^2.10"
     },
     "config": {
         "allow-plugins": {

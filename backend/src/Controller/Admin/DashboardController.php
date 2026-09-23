@@ -42,6 +42,7 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkTo(CharacterEquipmentCrudController::class, 'Покупки', 'fa fa-receipt');
 
         yield MenuItem::section('Бои');
+        yield MenuItem::linkTo(MonsterCrudController::class, 'Монстры', 'fa fa-dragon');
         yield MenuItem::linkTo(BattleCrudController::class, 'Бои', 'fa fa-fist-raised');
         yield MenuItem::linkTo(BattleRoundCrudController::class, 'Раунды боя', 'fa fa-list-ol');
 

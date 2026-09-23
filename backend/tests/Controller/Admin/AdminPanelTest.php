@@ -13,6 +13,7 @@ use App\Controller\Admin\CharacterEquipmentCrudController;
 use App\Controller\Admin\CharacterQuestProgressCrudController;
 use App\Controller\Admin\EquipmentCrudController;
 use App\Controller\Admin\EventCrudController;
+use App\Controller\Admin\MonsterCrudController;
 use App\Controller\Admin\TournamentCrudController;
 use App\Controller\Admin\TournamentEntryCrudController;
 use App\Controller\Admin\TournamentMatchCrudController;
@@ -51,6 +52,7 @@ class AdminPanelTest extends WebTestCase
         CharacterEquipmentCrudController::class,
         BattleCrudController::class,
         BattleRoundCrudController::class,
+        MonsterCrudController::class,
         EventCrudController::class,
         TournamentCrudController::class,
         TournamentEntryCrudController::class,
@@ -66,6 +68,7 @@ class AdminPanelTest extends WebTestCase
         BitCrudController::class,
         AbilityCrudController::class,
         EquipmentCrudController::class,
+        MonsterCrudController::class,
     ];
 
     public function testAnonymousIsRedirectedAwayFromAdmin(): void
