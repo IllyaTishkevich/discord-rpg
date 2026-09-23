@@ -7,6 +7,16 @@ export interface AbilityChoice {
   targets: number[];
 }
 
+// The ability catalog — admin-editable player-facing name/description, from
+// GET /api/abilities (App\Entity\Ability::$label/$description). Not the
+// same as Character.abilities (bare AbilityType[] — which ones a character
+// can use), this is what to actually show for each one.
+export interface AbilityCatalogEntry {
+  type: AbilityType;
+  label: string;
+  description: string | null;
+}
+
 export interface BattleState {
   id: number;
   mode?: "pve" | "event" | "pvp";

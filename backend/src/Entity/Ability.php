@@ -35,6 +35,16 @@ class Ability
     private AbilityType $type;
 
     /**
+     * Player-facing name — what the Activity's ability picker actually
+     * displays (ArenaScreen.tsx, via GET /api/abilities), unlike
+     * $description below. Defaults to AbilityType::label() at construction
+     * so every existing/seeded row shows something sensible immediately;
+     * admins can rename it from there without touching code.
+     */
+    #[ORM\Column(length: 64)]
+    private string $label;
+
+    /**
      * Admin-facing explanation of what the ability actually does — not read
      * by any battle logic, purely documentation for whoever is managing
      * class/character/equipment grants in the admin panel.
@@ -71,6 +81,7 @@ class Ability
     public function __construct(AbilityType $type)
     {
         $this->type = $type;
+        $this->label = $type->label();
     }
 
     public function getId(): ?int
@@ -86,6 +97,18 @@ class Ability
     public function setType(AbilityType $type): static
     {
         $this->type = $type;
+
+        return $this;
+    }
+
+    public function getLabel(): string
+    {
+        return $this->label;
+    }
+
+    public function setLabel(string $label): static
+    {
+        $this->label = $label;
 
         return $this;
     }
@@ -144,6 +167,6 @@ class Ability
 
     public function __toString(): string
     {
-        return $this->type->label();
+        return $this->label;
     }
 }

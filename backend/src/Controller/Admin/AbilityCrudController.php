@@ -11,6 +11,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ImageField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use Vich\UploaderBundle\Form\Type\VichImageType;
 
 class AbilityCrudController extends AbstractCrudController
@@ -32,6 +33,8 @@ class AbilityCrudController extends AbstractCrudController
         // Doctrine's enumType mapping (see BitCrudController for why a manual
         // map broke this).
         yield ChoiceField::new('type', 'Тип');
+        yield TextField::new('label', 'Название')
+            ->setHelp('Показывается игроку в Activity (выбор способности) — GET /api/abilities.');
         yield TextareaField::new('description', 'Описание')
             ->setHelp('Что делает способность — только для админки, в бой не попадает.')
             ->hideOnIndex();

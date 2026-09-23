@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fetchAbilities } from "../api/abilities";
 import { fetchBattle, fetchLatestRound, submitExchangeMove, throwRound } from "../api/battles";
 import { BitCoin, FACE_LABEL } from "../components/BitCoin";
 import { StatBar } from "../components/StatBar";
@@ -94,6 +95,18 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   const [lastRound, setLastRound] = useState<RoundResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Admin-editable player-facing name per ability (App\Entity\Ability::$label),
+  // overriding ABILITY_OPTIONS' hardcoded default — never blocks rendering
+  // if the fetch fails, it just falls back to that default.
+  const [abilityLabels, setAbilityLabels] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    fetchAbilities()
+      .then((abilities) => setAbilityLabels(Object.fromEntries(abilities.map((a) => [a.type, a.label]))))
+      .catch(() => {
+        // Keep the hardcoded ABILITY_OPTIONS labels — never block the arena on this.
+      });
+  }, []);
 
   async function handleThrow() {
     setBusy(true);
@@ -355,7 +368,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                         <span className="arena__ability-check" aria-hidden="true">
                           {isSelected ? "✓" : ""}
                         </span>
-                        <span className="arena__ability-label">{option.label}</span>
+                        <span className="arena__ability-label">{abilityLabels[option.type] ?? option.label}</span>
                       </span>
                       <span className="arena__ability-desc">{option.description}</span>
                     </button>
