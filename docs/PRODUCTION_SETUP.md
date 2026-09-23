@@ -264,6 +264,18 @@ server {
         fastcgi_param DOCUMENT_ROOT $document_root;
     }
 
+    # Загруженные иконки каталогов (Monster/Bit/Ability/Equipment/Item —
+    # Vich пишет их прямо в backend/public/uploads/<mapping>/, см.
+    # backend/config/packages/vich_uploader.yaml) — отдаются напрямую как
+    # статика, без PHP. Без этого блока `location /` ниже перехватывал бы
+    # эти запросы вместо него и отдавал index.html Activity, так как
+    # /uploads — не /api и не /admin: файл при этом реально лежит на
+    # диске, но по этому URL недостижим.
+    location ^~ /uploads/ {
+        root /opt/discord-rpg/backend/public;
+        try_files $uri =404;
+    }
+
     # статика Activity (собранный React, см. B.9)
     location / {
         root /opt/discord-rpg/activity/dist;
@@ -391,6 +403,7 @@ sudo systemctl restart discord-rpg-bot
 - [ ] HTTPS работает и на активити, и на `/api` (оба на одном домене — так спроектирован клиент активности).
 - [ ] Discord URL Mapping (A.2) указывает на тот же домен, что в `activity/.env.local` и `backend/.env.local`.
 - [ ] Первый админ добавлен командой из B.10, вход в `/admin` проверен вручную.
+- [ ] `location ^~ /uploads/` настроен в nginx (B.8) — `curl -I https://.../uploads/<любой существующий файл>` отдаёт 200, а не index.html Activity.
 
 ---
 
