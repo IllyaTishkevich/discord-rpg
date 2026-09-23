@@ -6,10 +6,13 @@ use App\Entity\CharacterClass;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\ImageField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
+use Vich\UploaderBundle\Form\Type\VichImageType;
 
 class CharacterClassCrudController extends AbstractCrudController
 {
@@ -41,6 +44,12 @@ class CharacterClassCrudController extends AbstractCrudController
         yield TextareaField::new('description', 'Описание')->hideOnIndex();
         yield IntegerField::new('baseHp', 'Базовое HP');
         yield IntegerField::new('baseEnergy', 'Базовая энергия');
+        yield ImageField::new('iconName', 'Иконка')
+            ->setBasePath('/uploads/classes')
+            ->onlyOnIndex();
+        yield Field::new('iconFile', 'Иконка (256x256)')
+            ->setFormType(VichImageType::class)
+            ->onlyOnForms();
         yield TextField::new('starterBitsSummary', 'Стартовые биты')->hideOnForm();
         // Editable many-to-many: pick which template Bit rows (character
         // === null) this class starts with — see Bit's docblock.

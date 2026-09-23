@@ -1,4 +1,4 @@
 *
 !.gitignore
-!monsters/
-!monsters/.gitkeep
+!*/
+!*/.gitkeep

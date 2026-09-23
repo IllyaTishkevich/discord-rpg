@@ -9,10 +9,13 @@ use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\ImageField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
+use Vich\UploaderBundle\Form\Type\VichImageType;
 
 class EquipmentCrudController extends AbstractCrudController
 {
@@ -52,5 +55,11 @@ class EquipmentCrudController extends AbstractCrudController
         yield BooleanField::new('bitAdvantageB', 'Преимущество на B (для bit)')->hideOnIndex();
         yield IntegerField::new('hpBonus', 'Бонус HP (для hp)')->hideOnIndex();
         yield AssociationField::new('grantedAbility', 'Даёт способность')->hideOnIndex();
+        yield ImageField::new('iconName', 'Иконка')
+            ->setBasePath('/uploads/equipment')
+            ->onlyOnIndex();
+        yield Field::new('iconFile', 'Иконка (256x256)')
+            ->setFormType(VichImageType::class)
+            ->onlyOnForms();
     }
 }

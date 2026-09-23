@@ -5,6 +5,9 @@ namespace App\Entity;
 use App\Enum\BitFace;
 use App\Repository\BitRepository;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\HttpFoundation\File\File;
+use Symfony\Component\Validator\Constraints as Assert;
+use Vich\UploaderBundle\Mapping\Attribute as Vich;
 
 /**
  * A two-sided coin definition. Thrown during battle rounds to randomly
@@ -18,6 +21,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Character::getAllBits().
  */
 #[ORM\Entity(repositoryClass: BitRepository::class)]
+#[Vich\Uploadable]
 class Bit
 {
     #[ORM\Id]
@@ -42,6 +46,54 @@ class Bit
 
     #[ORM\Column]
     private bool $advantageB;
+
+    /**
+     * Not persisted — Vich reads this on flush to store the file and fill
+     * iconAName/iconASize, then clears it (see Monster::$iconFile).
+     */
+    #[Vich\UploadableField(mapping: 'bit_icon', fileNameProperty: 'iconAName', size: 'iconASize')]
+    #[Assert\Image(
+        minWidth: 256,
+        maxWidth: 256,
+        minHeight: 256,
+        maxHeight: 256,
+        minWidthMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        maxWidthMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        minHeightMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        maxHeightMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+    )]
+    private ?File $iconAFile = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?string $iconAName = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?int $iconASize = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $iconAUpdatedAt = null;
+
+    #[Vich\UploadableField(mapping: 'bit_icon', fileNameProperty: 'iconBName', size: 'iconBSize')]
+    #[Assert\Image(
+        minWidth: 256,
+        maxWidth: 256,
+        minHeight: 256,
+        maxHeight: 256,
+        minWidthMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        maxWidthMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        minHeightMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        maxHeightMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+    )]
+    private ?File $iconBFile = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?string $iconBName = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?int $iconBSize = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $iconBUpdatedAt = null;
 
     public function __construct(BitFace $faceA, BitFace $faceB, bool $advantageA = false, bool $advantageB = false)
     {
@@ -102,6 +154,86 @@ class Bit
         $this->advantageB = $advantageB;
 
         return $this;
+    }
+
+    public function setIconAFile(?File $iconAFile = null): static
+    {
+        $this->iconAFile = $iconAFile;
+
+        if (null !== $iconAFile) {
+            $this->iconAUpdatedAt = new \DateTimeImmutable();
+        }
+
+        return $this;
+    }
+
+    public function getIconAFile(): ?File
+    {
+        return $this->iconAFile;
+    }
+
+    public function setIconAName(?string $iconAName): static
+    {
+        $this->iconAName = $iconAName;
+
+        return $this;
+    }
+
+    public function getIconAName(): ?string
+    {
+        return $this->iconAName;
+    }
+
+    public function setIconASize(?int $iconASize): static
+    {
+        $this->iconASize = $iconASize;
+
+        return $this;
+    }
+
+    public function getIconASize(): ?int
+    {
+        return $this->iconASize;
+    }
+
+    public function setIconBFile(?File $iconBFile = null): static
+    {
+        $this->iconBFile = $iconBFile;
+
+        if (null !== $iconBFile) {
+            $this->iconBUpdatedAt = new \DateTimeImmutable();
+        }
+
+        return $this;
+    }
+
+    public function getIconBFile(): ?File
+    {
+        return $this->iconBFile;
+    }
+
+    public function setIconBName(?string $iconBName): static
+    {
+        $this->iconBName = $iconBName;
+
+        return $this;
+    }
+
+    public function getIconBName(): ?string
+    {
+        return $this->iconBName;
+    }
+
+    public function setIconBSize(?int $iconBSize): static
+    {
+        $this->iconBSize = $iconBSize;
+
+        return $this;
+    }
+
+    public function getIconBSize(): ?int
+    {
+        return $this->iconBSize;
     }
 
     /**

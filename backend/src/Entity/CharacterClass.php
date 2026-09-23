@@ -6,6 +6,9 @@ use App\Repository\CharacterClassRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\HttpFoundation\File\File;
+use Symfony\Component\Validator\Constraints as Assert;
+use Vich\UploaderBundle\Mapping\Attribute as Vich;
 
 /**
  * Reference entity describing a playable class: base stats and the starter
@@ -20,6 +23,7 @@ use Doctrine\ORM\Mapping as ORM;
  * immediately.
  */
 #[ORM\Entity(repositoryClass: CharacterClassRepository::class)]
+#[Vich\Uploadable]
 class CharacterClass
 {
     #[ORM\Id]
@@ -65,6 +69,32 @@ class CharacterClass
 
     #[ORM\OneToMany(mappedBy: 'characterClass', targetEntity: Character::class)]
     private Collection $characters;
+
+    /**
+     * Not persisted — Vich reads this on flush to store the file and fill
+     * iconName/iconSize, then clears it (see Monster::$iconFile).
+     */
+    #[Vich\UploadableField(mapping: 'character_class_icon', fileNameProperty: 'iconName', size: 'iconSize')]
+    #[Assert\Image(
+        minWidth: 256,
+        maxWidth: 256,
+        minHeight: 256,
+        maxHeight: 256,
+        minWidthMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        maxWidthMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        minHeightMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        maxHeightMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+    )]
+    private ?File $iconFile = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?string $iconName = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?int $iconSize = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $iconUpdatedAt = null;
 
     public function __construct(string $code, string $name, int $baseHp, int $baseEnergy)
     {
@@ -202,6 +232,46 @@ class CharacterClass
             static fn (Bit $bit) => sprintf('%s/%s', $bit->getFaceA()->value, $bit->getFaceB()->value),
             $this->starterBits->toArray(),
         ));
+    }
+
+    public function setIconFile(?File $iconFile = null): static
+    {
+        $this->iconFile = $iconFile;
+
+        if (null !== $iconFile) {
+            $this->iconUpdatedAt = new \DateTimeImmutable();
+        }
+
+        return $this;
+    }
+
+    public function getIconFile(): ?File
+    {
+        return $this->iconFile;
+    }
+
+    public function setIconName(?string $iconName): static
+    {
+        $this->iconName = $iconName;
+
+        return $this;
+    }
+
+    public function getIconName(): ?string
+    {
+        return $this->iconName;
+    }
+
+    public function setIconSize(?int $iconSize): static
+    {
+        $this->iconSize = $iconSize;
+
+        return $this;
+    }
+
+    public function getIconSize(): ?int
+    {
+        return $this->iconSize;
     }
 
     public function __toString(): string

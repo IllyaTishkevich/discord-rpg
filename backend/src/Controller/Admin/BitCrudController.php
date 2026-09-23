@@ -8,7 +8,10 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\ImageField;
+use Vich\UploaderBundle\Form\Type\VichImageType;
 
 class BitCrudController extends AbstractCrudController
 {
@@ -34,6 +37,20 @@ class BitCrudController extends AbstractCrudController
         yield ChoiceField::new('faceB', 'Грань B');
         yield BooleanField::new('advantageA', 'Преимущество на A');
         yield BooleanField::new('advantageB', 'Преимущество на B');
+        yield ImageField::new('iconAName', 'Иконка A')
+            ->setBasePath('/uploads/bits')
+            ->onlyOnIndex();
+        // VichImageType handles the actual upload (writes the file, fills
+        // iconAName/iconASize on flush) — see Monster::$iconFile's docblock.
+        yield Field::new('iconAFile', 'Иконка A (256x256)')
+            ->setFormType(VichImageType::class)
+            ->onlyOnForms();
+        yield ImageField::new('iconBName', 'Иконка B')
+            ->setBasePath('/uploads/bits')
+            ->onlyOnIndex();
+        yield Field::new('iconBFile', 'Иконка B (256x256)')
+            ->setFormType(VichImageType::class)
+            ->onlyOnForms();
     }
 
     /**

@@ -7,7 +7,10 @@ use App\Enum\AbilityType;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\ImageField;
+use Vich\UploaderBundle\Form\Type\VichImageType;
 
 class AbilityCrudController extends AbstractCrudController
 {
@@ -28,6 +31,12 @@ class AbilityCrudController extends AbstractCrudController
         // Doctrine's enumType mapping (see BitCrudController for why a manual
         // map broke this).
         yield ChoiceField::new('type', 'Тип');
+        yield ImageField::new('iconName', 'Иконка')
+            ->setBasePath('/uploads/abilities')
+            ->onlyOnIndex();
+        yield Field::new('iconFile', 'Иконка (256x256)')
+            ->setFormType(VichImageType::class)
+            ->onlyOnForms();
     }
 
     /**

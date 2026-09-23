@@ -5,6 +5,9 @@ namespace App\Entity;
 use App\Enum\AbilityType;
 use App\Repository\AbilityRepository;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\HttpFoundation\File\File;
+use Symfony\Component\Validator\Constraints as Assert;
+use Vich\UploaderBundle\Mapping\Attribute as Vich;
 
 /**
  * Catalog row for one of the 4 fixed combat abilities (App\Enum\AbilityType)
@@ -20,6 +23,7 @@ use Doctrine\ORM\Mapping as ORM;
  * docs/BATTLE_RULES.md §3.1.
  */
 #[ORM\Entity(repositoryClass: AbilityRepository::class)]
+#[Vich\Uploadable]
 class Ability
 {
     #[ORM\Id]
@@ -29,6 +33,32 @@ class Ability
 
     #[ORM\Column(enumType: AbilityType::class, unique: true)]
     private AbilityType $type;
+
+    /**
+     * Not persisted — Vich reads this on flush to store the file and fill
+     * iconName/iconSize, then clears it (see Monster::$iconFile).
+     */
+    #[Vich\UploadableField(mapping: 'ability_icon', fileNameProperty: 'iconName', size: 'iconSize')]
+    #[Assert\Image(
+        minWidth: 256,
+        maxWidth: 256,
+        minHeight: 256,
+        maxHeight: 256,
+        minWidthMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        maxWidthMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        minHeightMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+        maxHeightMessage: 'Иконка должна быть ровно 256x256 пикселей.',
+    )]
+    private ?File $iconFile = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?string $iconName = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?int $iconSize = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $iconUpdatedAt = null;
 
     public function __construct(AbilityType $type)
     {
@@ -50,6 +80,46 @@ class Ability
         $this->type = $type;
 
         return $this;
+    }
+
+    public function setIconFile(?File $iconFile = null): static
+    {
+        $this->iconFile = $iconFile;
+
+        if (null !== $iconFile) {
+            $this->iconUpdatedAt = new \DateTimeImmutable();
+        }
+
+        return $this;
+    }
+
+    public function getIconFile(): ?File
+    {
+        return $this->iconFile;
+    }
+
+    public function setIconName(?string $iconName): static
+    {
+        $this->iconName = $iconName;
+
+        return $this;
+    }
+
+    public function getIconName(): ?string
+    {
+        return $this->iconName;
+    }
+
+    public function setIconSize(?int $iconSize): static
+    {
+        $this->iconSize = $iconSize;
+
+        return $this;
+    }
+
+    public function getIconSize(): ?int
+    {
+        return $this->iconSize;
     }
 
     public function __toString(): string
