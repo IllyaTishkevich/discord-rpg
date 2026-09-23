@@ -148,6 +148,11 @@ BOT_API_SECRET=$(openssl rand -hex 24)
 
 GOOGLE_CLIENT_ID=<из B.10>
 GOOGLE_CLIENT_SECRET=<из B.10>
+
+# Инструмент /admin → "Превью Activity" (см. README.md) — куда он открывает
+# iframe. На проде обычно указываете на сам публичный домен (посмотреть
+# собранный dist как есть); локально в dev — на `npm run dev`.
+ACTIVITY_PREVIEW_URL=https://discord-rpg.example.com
 ```
 
 `bot/.env`:

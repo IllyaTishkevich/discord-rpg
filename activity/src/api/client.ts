@@ -1,8 +1,16 @@
+// Admin-only design/debug bypass (see backend's ActivityPreviewController,
+// reachable only via /admin): the token is pre-minted server-side for a
+// chosen player and handed to us via this query param instead of going
+// through the real Discord SDK auth flow. Never present outside that
+// admin-embedded iframe — see App.tsx, which is the only place that reads it.
+export const devToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("devToken") : null;
+
 // Inside a real Discord Activity iframe, external requests must go through
 // Discord's own proxy path (mapped to our backend origin in the Developer
 // Portal's URL Mappings) — direct cross-origin requests are blocked by the
-// iframe's CSP. Outside Discord (plain browser dev), hit the backend directly.
-export const isEmbeddedInDiscord = typeof window !== "undefined" && window.self !== window.top;
+// iframe's CSP. Outside Discord (plain browser dev, or the admin preview
+// iframe above), hit the backend directly.
+export const isEmbeddedInDiscord = !devToken && typeof window !== "undefined" && window.self !== window.top;
 const BASE_URL = isEmbeddedInDiscord ? "/.proxy/api" : (import.meta.env.VITE_BACKEND_API_URL ?? "http://localhost:8000/api");
 
 const AUTH_TOKEN_STORAGE_KEY = "discord-rpg.auth-token";

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>discord-rpg — Превью: {{ user.displayName }}</title>
+    <style>
+        html, body { height: 100%; margin: 0; background: #1e1f22; }
+        .bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            background: #2b2d31;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 14px;
+        }
+        .bar a { color: #949cf7; text-decoration: none; }
+        iframe {
+            display: block;
+            width: 100%;
+            height: calc(100% - 41px);
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="bar">
+        <a href="{{ path('admin_activity_preview') }}">← Назад</a>
+        <span>Превью от имени: <strong>{{ user.displayName }}</strong></span>
+    </div>
+    {# The token travels only inside this iframe's src, never in the top-level
+       address bar — reasonable given this whole page already requires an
+       admin login to reach in the first place. #}
+    <iframe src="{{ activityUrl }}/?devToken={{ token|url_encode }}" allow="clipboard-write"></iframe>
+</body>
+</html>

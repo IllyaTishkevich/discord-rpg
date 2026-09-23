@@ -141,6 +141,56 @@ class AdminPanelTest extends WebTestCase
         $em->flush();
     }
 
+    public function testAnonymousCannotAccessActivityPreview(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/admin/activity-preview');
+
+        self::assertResponseRedirects();
+    }
+
+    public function testLoggedInAdminCanViewActivityPreviewIndex(): void
+    {
+        $client = static::createClient();
+        $this->loginAsAdmin($client);
+        $this->ensureCharacterExists();
+
+        $client->request('GET', '/admin/activity-preview');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorExists('a[href*="/admin/activity-preview/launch/"]');
+    }
+
+    /**
+     * The whole point of this tool is minting a token that actually works —
+     * not just that some string ends up in the rendered iframe's src.
+     */
+    public function testActivityPreviewLaunchMintsAWorkingJwt(): void
+    {
+        $client = static::createClient();
+        $this->loginAsAdmin($client);
+        $this->ensureCharacterExists();
+
+        $em = static::getContainer()->get('doctrine')->getManager();
+        $user = $em->getRepository(User::class)->findOneBy(['discordId' => 'test-fixture-discord-id']);
+        self::assertNotNull($user);
+
+        $crawler = $client->request('GET', \sprintf('/admin/activity-preview/launch/%d', $user->getId()));
+        self::assertResponseIsSuccessful();
+
+        $iframeSrc = $crawler->filter('iframe')->attr('src');
+        self::assertNotNull($iframeSrc);
+
+        parse_str((string) parse_url($iframeSrc, \PHP_URL_QUERY), $query);
+        self::assertArrayHasKey('devToken', $query);
+
+        // Same client, different (stateless, JWT-based) firewall — a test
+        // can only boot one kernel/client, but /api doesn't care about the
+        // admin session cookie either way.
+        $client->request('GET', '/api/characters/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer '.$query['devToken']]);
+        self::assertResponseIsSuccessful();
+    }
+
     private function loginAsAdmin($client): Admin
     {
         /** @var EntityManagerInterface $em */

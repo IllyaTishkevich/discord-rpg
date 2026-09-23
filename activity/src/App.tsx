@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchMyActivePvp, startPveBattle } from "./api/battles";
 import { fetchMyCharacter } from "./api/characters";
-import { ApiError, isEmbeddedInDiscord } from "./api/client";
+import { ApiError, devToken, isEmbeddedInDiscord, setAuthToken } from "./api/client";
 import { fetchActiveEvent, startEventBattle } from "./api/events";
 import { authenticateWithDiscord } from "./discord/sdk";
 import { ArenaScreen } from "./screens/ArenaScreen";
@@ -53,12 +53,18 @@ function App() {
   const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
 
   useEffect(() => {
-    if (!isEmbeddedInDiscord) {
+    // Admin-only design/debug bypass (see backend's ActivityPreviewController,
+    // reachable only via /admin) — a pre-minted token for a chosen player,
+    // never present outside that admin-embedded iframe. Skips the real
+    // Discord SDK handshake entirely.
+    if (devToken) {
+      setAuthToken(devToken);
+    } else if (!isEmbeddedInDiscord) {
       setState({ status: "not-embedded" });
       return;
     }
 
-    authenticateWithDiscord()
+    (devToken ? Promise.resolve() : authenticateWithDiscord())
       .then(() => fetchMyCharacter())
       .then(async (character) => {
         fetchActiveEvent()

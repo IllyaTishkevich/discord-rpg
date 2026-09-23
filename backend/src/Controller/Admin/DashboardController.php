@@ -56,6 +56,7 @@ class DashboardController extends AbstractDashboardController
 
         yield MenuItem::section('Администрирование');
         yield MenuItem::linkTo(AdminCrudController::class, 'Админы', 'fa fa-user-shield');
+        yield MenuItem::linkToRoute('Превью Activity', 'fa fa-desktop', 'admin_activity_preview');
         yield MenuItem::linkToLogout('Выйти', 'fa fa-sign-out-alt');
     }
 }

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>discord-rpg — Превью Activity</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #1e1f22;
+            color: #fff;
+            margin: 0;
+            padding: 40px;
+        }
+        .card {
+            background: #2b2d31;
+            border-radius: 12px;
+            padding: 32px;
+            max-width: 480px;
+            margin: 0 auto;
+        }
+        h1 { font-size: 20px; margin: 0 0 8px; }
+        p.hint { opacity: 0.7; font-size: 14px; margin: 0 0 24px; }
+        ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+        li a {
+            display: block;
+            background: #313338;
+            color: #fff;
+            text-decoration: none;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 15px;
+        }
+        li a:hover { background: #3a3d8f; }
+        li a span { opacity: 0.6; font-size: 13px; }
+        .empty { opacity: 0.7; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Превью Activity</h1>
+        <p class="hint">
+            Открывает Activity в iframe от имени выбранного игрока, без реального Discord — для отладки и работы над дизайном.
+            Указывает на <code>{{ activity_preview_url|default('ACTIVITY_PREVIEW_URL') }}</code> (обычно — ваш <code>npm run dev</code>).
+        </p>
+        {% if users is empty %}
+            <p class="empty">Пока нет ни одного персонажа для превью.</p>
+        {% else %}
+            <ul>
+                {% for user in users %}
+                    <li>
+                        <a href="{{ path('admin_activity_preview_launch', {id: user.id}) }}">
+                            {{ user.displayName }}
+                            <span>({{ user.character.characterClass.name }}, ур. {{ user.character.level }})</span>
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </div>
+</body>
+</html>
