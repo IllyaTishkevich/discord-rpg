@@ -18,10 +18,14 @@ interface Props {
   face: BitFace | null;
   selectable?: boolean;
   selected?: boolean;
+  // Already activated this round — still shows its real face (unlike an
+  // unknown/not-yet-thrown bit, which passes face={null}), just dimmed and
+  // no longer clickable.
+  used?: boolean;
   onClick?: () => void;
 }
 
-export function BitCoin({ face, selectable, selected, onClick }: Props) {
+export function BitCoin({ face, selectable, selected, used, onClick }: Props) {
   const [flipped, setFlipped] = useState(false);
 
   useEffect(() => {
@@ -35,7 +39,13 @@ export function BitCoin({ face, selectable, selected, onClick }: Props) {
     return () => cancelAnimationFrame(id);
   }, [face]);
 
-  const classNames = ["bit-coin", flipped ? "bit-coin--flipped" : "", selectable ? "bit-coin--selectable" : "", selected ? "bit-coin--selected" : ""]
+  const classNames = [
+    "bit-coin",
+    flipped ? "bit-coin--flipped" : "",
+    selectable ? "bit-coin--selectable" : "",
+    selected ? "bit-coin--selected" : "",
+    used ? "bit-coin--used" : "",
+  ]
     .filter(Boolean)
     .join(" ");
 

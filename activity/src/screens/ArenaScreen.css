@@ -136,3 +136,14 @@
   color: #f23f42;
   margin-top: 12px;
 }
+
+.arena__move-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.arena__action--secondary {
+  background: transparent;
+  border: 1px solid #666;
+}

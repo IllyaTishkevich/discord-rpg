@@ -1,5 +1,5 @@
 import { apiFetch } from "./client";
-import type { AbilityChoice, BattleState, ResolveResponse, RoundResult, SubmitActionsResponse, ThrowResult } from "../types/battle";
+import type { AbilityChoice, BattleState, ExchangeMoveResponse, RoundResult, SubmitActionsResponse, ThrowResult } from "../types/battle";
 
 export function startPveBattle(): Promise<BattleState> {
   return apiFetch<BattleState>("/battles/pve", { method: "POST" });
@@ -25,10 +25,16 @@ export function throwRound(battleId: number): Promise<ThrowResult> {
   return apiFetch<ThrowResult>(`/battles/${battleId}/throw`, { method: "POST" });
 }
 
-export function resolveRound(battleId: number, choice: AbilityChoice): Promise<ResolveResponse> {
-  return apiFetch<ResolveResponse>(`/battles/${battleId}/resolve`, {
+/**
+ * PvE/event only, interactive step-by-step flow (docs/COMBAT_V2_DESIGN.md
+ * §7-8): submit one lead-or-respond decision — the server figures out
+ * which from the battle's own state. Empty `indices` means "pass" and is
+ * only valid when responding to an incoming attack.
+ */
+export function submitExchangeMove(battleId: number, indices: number[], ability?: AbilityChoice): Promise<ExchangeMoveResponse> {
+  return apiFetch<ExchangeMoveResponse>(`/battles/${battleId}/exchanges/move`, {
     method: "POST",
-    body: JSON.stringify(choice),
+    body: JSON.stringify({ indices, ...(ability ?? {}) }),
   });
 }
 

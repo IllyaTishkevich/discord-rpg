@@ -35,6 +35,11 @@
   box-shadow: 0 0 0 2px #5865f2;
 }
 
+.bit-coin--used {
+  opacity: 0.35;
+  filter: grayscale(70%);
+}
+
 .bit-coin__face {
   transform: rotateY(0deg);
 }
