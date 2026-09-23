@@ -13,6 +13,17 @@ export const devToken = typeof window !== "undefined" ? new URLSearchParams(wind
 export const isEmbeddedInDiscord = !devToken && typeof window !== "undefined" && window.self !== window.top;
 const BASE_URL = isEmbeddedInDiscord ? "/.proxy/api" : (import.meta.env.VITE_BACKEND_API_URL ?? "http://localhost:8000/api");
 
+// Same proxying rule as BASE_URL, but for static files served straight off
+// the backend (e.g. /uploads/items/...) rather than the /api namespace —
+// Discord's URL Mapping is a root-prefix mapping (docs/PRODUCTION_SETUP.md
+// §A.2: "/" → backend domain), so /.proxy/uploads/... is proxied exactly
+// like /.proxy/api/... already is. Derived from the same env var as
+// BASE_URL (stripping the trailing /api) rather than a new one, so
+// deployments don't need an extra variable just for this.
+export const IMAGE_BASE_URL = isEmbeddedInDiscord
+  ? "/.proxy"
+  : (import.meta.env.VITE_BACKEND_API_URL ?? "http://localhost:8000/api").replace(/\/api\/?$/, "");
+
 const AUTH_TOKEN_STORAGE_KEY = "discord-rpg.auth-token";
 
 export function getAuthToken(): string | null {

@@ -11,10 +11,6 @@ export interface EquipmentItem {
   hpBonus: number | null;
 }
 
-export interface InventoryItem extends EquipmentItem {
-  purchasedAt: string;
-}
-
 export interface PurchaseResult {
   coins: number;
   maxHp: number;

@@ -171,7 +171,7 @@ function App() {
   }
 
   if (state.status === "inventory") {
-    return <InventoryScreen onBack={() => setState({ status: "profile", character: state.character })} />;
+    return <InventoryScreen character={state.character} onBack={(character) => setState({ status: "profile", character })} />;
   }
 
   if (state.status === "tournament") {

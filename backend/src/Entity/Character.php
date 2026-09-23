@@ -3,6 +3,8 @@
 namespace App\Entity;
 
 use App\Enum\AbilityType;
+use App\Enum\ItemEffectType;
+use App\Enum\ItemType;
 use App\Repository\CharacterRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -11,6 +13,12 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: CharacterRepository::class)]
 class Character
 {
+    /**
+     * Base inventory grid size before any equipped Bag's bonus — see
+     * getInventoryCapacity().
+     */
+    private const BASE_INVENTORY_CAPACITY = 12;
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -48,6 +56,18 @@ class Character
     #[ORM\JoinTable(name: 'character_ability')]
     private Collection $abilities;
 
+    /**
+     * Looted items (LootService) held in the 12-cell (+bag bonus) inventory
+     * grid — inverse side, CharacterInventoryItem owns the relation. See
+     * getAllBits()/getAllAbilities()/getInventoryCapacity() for how an
+     * equipped one's effect is derived live from this collection, and
+     * InventoryService for use/sell/discard.
+     *
+     * @var Collection<int, CharacterInventoryItem>
+     */
+    #[ORM\OneToMany(mappedBy: 'character', targetEntity: CharacterInventoryItem::class, orphanRemoval: true)]
+    private Collection $inventoryItems;
+
     #[ORM\Column]
     private int $hp;
 
@@ -83,6 +103,7 @@ class Character
         $this->createdAt = new \DateTimeImmutable();
         $this->purchasedBits = new ArrayCollection();
         $this->abilities = new ArrayCollection();
+        $this->inventoryItems = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -126,13 +147,24 @@ class Character
 
     /**
      * The full set of bits this character throws every round: its class's
-     * bits plus whatever it bought individually.
+     * bits, whatever it bought individually, plus whatever an equipped
+     * AddBit inventory item is currently granting.
      *
      * @return Bit[]
      */
     public function getAllBits(): array
     {
-        return [...$this->characterClass->getStarterBits(), ...$this->purchasedBits];
+        $equippedBits = [];
+        foreach ($this->inventoryItems as $inventoryItem) {
+            if ($inventoryItem->isEquipped()
+                && ItemEffectType::AddBit === $inventoryItem->getItem()->getEffectType()
+                && null !== $inventoryItem->getGrantedBit()
+            ) {
+                $equippedBits[] = $inventoryItem->getGrantedBit();
+            }
+        }
+
+        return [...$this->characterClass->getStarterBits(), ...$this->purchasedBits, ...$equippedBits];
     }
 
     /**
@@ -161,13 +193,24 @@ class Character
 
     /**
      * The full set of abilities this character can choose from in battle:
-     * its class's abilities plus whatever it was granted individually.
+     * its class's abilities, whatever it was granted individually, plus
+     * whatever an equipped AddAbility inventory item is currently granting.
      *
      * @return Ability[]
      */
     public function getAllAbilities(): array
     {
-        return [...$this->characterClass->getAbilities(), ...$this->abilities];
+        $equippedAbilities = [];
+        foreach ($this->inventoryItems as $inventoryItem) {
+            if ($inventoryItem->isEquipped() && ItemEffectType::AddAbility === $inventoryItem->getItem()->getEffectType()) {
+                $ability = $inventoryItem->getItem()->getGrantedAbility();
+                if (null !== $ability) {
+                    $equippedAbilities[] = $ability;
+                }
+            }
+        }
+
+        return [...$this->characterClass->getAbilities(), ...$this->abilities, ...$equippedAbilities];
     }
 
     public function hasAbilityType(AbilityType $type): bool
@@ -315,6 +358,46 @@ class Character
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    /**
+     * @return Collection<int, CharacterInventoryItem>
+     */
+    public function getInventoryItems(): Collection
+    {
+        return $this->inventoryItems;
+    }
+
+    public function addInventoryItem(CharacterInventoryItem $item): static
+    {
+        if (!$this->inventoryItems->contains($item)) {
+            $this->inventoryItems->add($item);
+        }
+
+        return $this;
+    }
+
+    public function removeInventoryItem(CharacterInventoryItem $item): static
+    {
+        $this->inventoryItems->removeElement($item);
+
+        return $this;
+    }
+
+    /**
+     * 12 cells, plus an equipped Bag's bonus if any — at most one Bag can be
+     * equipped at a time (InventoryService's auto-swap), so this is a single
+     * lookup, not a sum.
+     */
+    public function getInventoryCapacity(): int
+    {
+        foreach ($this->inventoryItems as $inventoryItem) {
+            if ($inventoryItem->isEquipped() && ItemType::Bag === $inventoryItem->getItem()->getType()) {
+                return self::BASE_INVENTORY_CAPACITY + ($inventoryItem->getItem()->getCapacityBonus() ?? 0);
+            }
+        }
+
+        return self::BASE_INVENTORY_CAPACITY;
     }
 
     /**

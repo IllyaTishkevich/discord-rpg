@@ -7,6 +7,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
+use EasyCorp\Bundle\EasyAdminBundle\Field\FormField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ImageField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
@@ -56,5 +57,19 @@ class MonsterCrudController extends AbstractCrudController
         // CharacterClassCrudController's "Стартовые биты".
         yield AssociationField::new('bits', 'Биты')->hideOnIndex();
         yield AssociationField::new('abilities', 'Способности')->hideOnIndex();
+
+        // Up to 5 independently-rolled drop slots (LootService) — each only
+        // counts once both its item and chance are set (Monster::getDrops()).
+        yield FormField::addFieldset('Дроп (до 5 предметов, шанс каждого — независимо)')->onlyOnForms();
+        yield AssociationField::new('dropItem1', 'Предмет 1')->hideOnIndex();
+        yield IntegerField::new('dropChance1', 'Шанс 1 (%)')->hideOnIndex();
+        yield AssociationField::new('dropItem2', 'Предмет 2')->hideOnIndex();
+        yield IntegerField::new('dropChance2', 'Шанс 2 (%)')->hideOnIndex();
+        yield AssociationField::new('dropItem3', 'Предмет 3')->hideOnIndex();
+        yield IntegerField::new('dropChance3', 'Шанс 3 (%)')->hideOnIndex();
+        yield AssociationField::new('dropItem4', 'Предмет 4')->hideOnIndex();
+        yield IntegerField::new('dropChance4', 'Шанс 4 (%)')->hideOnIndex();
+        yield AssociationField::new('dropItem5', 'Предмет 5')->hideOnIndex();
+        yield IntegerField::new('dropChance5', 'Шанс 5 (%)')->hideOnIndex();
     }
 }

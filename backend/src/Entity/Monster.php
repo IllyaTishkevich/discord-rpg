@@ -59,6 +59,52 @@ class Monster
     private Collection $abilities;
 
     /**
+     * Up to 5 possible drops, each with its own independent chance (percent,
+     * 1-100) rolled separately by LootService when this monster is defeated
+     * in PvE — see getDrops(). A slot only counts if both its item and
+     * chance are set.
+     */
+    #[ORM\ManyToOne(targetEntity: Item::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Item $dropItem1 = null;
+
+    #[ORM\Column(nullable: true)]
+    #[Assert\Range(min: 1, max: 100, notInRangeMessage: 'Шанс дропа — от 1 до 100 (%).')]
+    private ?int $dropChance1 = null;
+
+    #[ORM\ManyToOne(targetEntity: Item::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Item $dropItem2 = null;
+
+    #[ORM\Column(nullable: true)]
+    #[Assert\Range(min: 1, max: 100, notInRangeMessage: 'Шанс дропа — от 1 до 100 (%).')]
+    private ?int $dropChance2 = null;
+
+    #[ORM\ManyToOne(targetEntity: Item::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Item $dropItem3 = null;
+
+    #[ORM\Column(nullable: true)]
+    #[Assert\Range(min: 1, max: 100, notInRangeMessage: 'Шанс дропа — от 1 до 100 (%).')]
+    private ?int $dropChance3 = null;
+
+    #[ORM\ManyToOne(targetEntity: Item::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Item $dropItem4 = null;
+
+    #[ORM\Column(nullable: true)]
+    #[Assert\Range(min: 1, max: 100, notInRangeMessage: 'Шанс дропа — от 1 до 100 (%).')]
+    private ?int $dropChance4 = null;
+
+    #[ORM\ManyToOne(targetEntity: Item::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Item $dropItem5 = null;
+
+    #[ORM\Column(nullable: true)]
+    #[Assert\Range(min: 1, max: 100, notInRangeMessage: 'Шанс дропа — от 1 до 100 (%).')]
+    private ?int $dropChance5 = null;
+
+    /**
      * Not persisted — Vich reads this on flush to store the file and fill
      * iconName/iconUpdatedAt, then clears it.
      */
@@ -237,6 +283,149 @@ class Monster
     public function getIconSize(): ?int
     {
         return $this->iconSize;
+    }
+
+    public function getDropItem1(): ?Item
+    {
+        return $this->dropItem1;
+    }
+
+    public function setDropItem1(?Item $dropItem1): static
+    {
+        $this->dropItem1 = $dropItem1;
+
+        return $this;
+    }
+
+    public function getDropChance1(): ?int
+    {
+        return $this->dropChance1;
+    }
+
+    public function setDropChance1(?int $dropChance1): static
+    {
+        $this->dropChance1 = $dropChance1;
+
+        return $this;
+    }
+
+    public function getDropItem2(): ?Item
+    {
+        return $this->dropItem2;
+    }
+
+    public function setDropItem2(?Item $dropItem2): static
+    {
+        $this->dropItem2 = $dropItem2;
+
+        return $this;
+    }
+
+    public function getDropChance2(): ?int
+    {
+        return $this->dropChance2;
+    }
+
+    public function setDropChance2(?int $dropChance2): static
+    {
+        $this->dropChance2 = $dropChance2;
+
+        return $this;
+    }
+
+    public function getDropItem3(): ?Item
+    {
+        return $this->dropItem3;
+    }
+
+    public function setDropItem3(?Item $dropItem3): static
+    {
+        $this->dropItem3 = $dropItem3;
+
+        return $this;
+    }
+
+    public function getDropChance3(): ?int
+    {
+        return $this->dropChance3;
+    }
+
+    public function setDropChance3(?int $dropChance3): static
+    {
+        $this->dropChance3 = $dropChance3;
+
+        return $this;
+    }
+
+    public function getDropItem4(): ?Item
+    {
+        return $this->dropItem4;
+    }
+
+    public function setDropItem4(?Item $dropItem4): static
+    {
+        $this->dropItem4 = $dropItem4;
+
+        return $this;
+    }
+
+    public function getDropChance4(): ?int
+    {
+        return $this->dropChance4;
+    }
+
+    public function setDropChance4(?int $dropChance4): static
+    {
+        $this->dropChance4 = $dropChance4;
+
+        return $this;
+    }
+
+    public function getDropItem5(): ?Item
+    {
+        return $this->dropItem5;
+    }
+
+    public function setDropItem5(?Item $dropItem5): static
+    {
+        $this->dropItem5 = $dropItem5;
+
+        return $this;
+    }
+
+    public function getDropChance5(): ?int
+    {
+        return $this->dropChance5;
+    }
+
+    public function setDropChance5(?int $dropChance5): static
+    {
+        $this->dropChance5 = $dropChance5;
+
+        return $this;
+    }
+
+    /**
+     * Non-null (item, chance) slot pairs only — for LootService to iterate.
+     *
+     * @return array<array{item: Item, chance: int}>
+     */
+    public function getDrops(): array
+    {
+        $drops = [];
+        foreach ([
+            [$this->dropItem1, $this->dropChance1],
+            [$this->dropItem2, $this->dropChance2],
+            [$this->dropItem3, $this->dropChance3],
+            [$this->dropItem4, $this->dropChance4],
+            [$this->dropItem5, $this->dropChance5],
+        ] as [$item, $chance]) {
+            if (null !== $item && null !== $chance) {
+                $drops[] = ['item' => $item, 'chance' => $chance];
+            }
+        }
+
+        return $drops;
     }
 
     /**

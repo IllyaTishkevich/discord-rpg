@@ -99,6 +99,7 @@ class BattleService
         private readonly AbilityResolver $abilityResolver,
         private readonly QuestService $questService,
         private readonly MonsterRepository $monsterRepository,
+        private readonly LootService $lootService,
     ) {
     }
 
@@ -762,6 +763,7 @@ class BattleService
             $character->addXp($isEvent ? self::EVENT_XP_REWARD : self::XP_REWARD);
             $character->addCoins($isEvent ? self::EVENT_COIN_REWARD : self::COIN_REWARD);
             $this->questService->recordBattleWin($character);
+            $this->lootService->rollDrops($character, $battle->getOpponentMonster());
         } elseif ($character->getHp() <= 0) {
             $battle->setStatus(BattleStatus::Lost);
         }
