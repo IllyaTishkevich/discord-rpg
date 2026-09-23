@@ -4,7 +4,7 @@ import { BitCoin, FACE_LABEL } from "../components/BitCoin";
 import { StatBar } from "../components/StatBar";
 import { PvpArenaScreen } from "./PvpArenaScreen";
 import type { AbilityChoice, AbilityType, BattleState, Exchange, IncomingMove, RoundResult } from "../types/battle";
-import type { BitFace } from "../types/character";
+import type { BitFace, Character } from "../types/character";
 import "./ArenaScreen.css";
 
 type Phase = "loading" | "playing" | "resolved";
@@ -29,6 +29,14 @@ function isAffordable(option: AbilityOption, spentCount: number): boolean {
   return spentCount >= (option.fixedCost ?? 0);
 }
 
+// Prefer Flip as the default pick (matches the old always-Flip behavior) but
+// only when the character actually has it — otherwise fall back to whatever
+// it does have, so the pre-selected ability is never one the backend will
+// reject (see BattleService::assertAbilityAvailable()).
+function defaultAbility(available: AbilityType[]): AbilityType {
+  return available.includes("flip") ? "flip" : (available[0] ?? "flip");
+}
+
 // Describes one step of the round's exchange sequence in plain language —
 // who led with what, how the other side reacted, and what it cost.
 function describeExchange(exchange: Exchange): string {
@@ -47,6 +55,7 @@ function describeExchange(exchange: Exchange): string {
 
 interface Props {
   initialBattle: BattleState;
+  character: Character;
   onFinished: (battle: BattleState, lastRound: RoundResult | null) => void;
 }
 
@@ -58,15 +67,15 @@ interface Props {
  * spent. PvP still uses the older one-shot simultaneous flow — see
  * PvpArenaScreen.
  */
-export function ArenaScreen({ initialBattle, onFinished }: Props) {
+export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   if (initialBattle.mode === "pvp") {
-    return <PvpArenaScreen initialBattle={initialBattle} onFinished={onFinished} />;
+    return <PvpArenaScreen initialBattle={initialBattle} character={character} onFinished={onFinished} />;
   }
 
-  return <InteractiveArenaScreen initialBattle={initialBattle} onFinished={onFinished} />;
+  return <InteractiveArenaScreen initialBattle={initialBattle} character={character} onFinished={onFinished} />;
 }
 
-function InteractiveArenaScreen({ initialBattle, onFinished }: Props) {
+function InteractiveArenaScreen({ initialBattle, character, onFinished }: Props) {
   const [battle, setBattle] = useState(initialBattle);
   const [phase, setPhase] = useState<Phase>("loading");
   const [playerFaces, setPlayerFaces] = useState<BitFace[]>([]);
@@ -77,7 +86,8 @@ function InteractiveArenaScreen({ initialBattle, onFinished }: Props) {
   const [incomingMove, setIncomingMove] = useState<IncomingMove | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [pendingAbilityChoice, setPendingAbilityChoice] = useState(false);
-  const [selectedAbility, setSelectedAbility] = useState<AbilityType>("flip");
+  const [selectedAbility, setSelectedAbility] = useState<AbilityType>(defaultAbility(character.abilities));
+  const availableAbilityOptions = ABILITY_OPTIONS.filter((option) => character.abilities.includes(option.type));
   const [flipTargets, setFlipTargets] = useState<number[]>([]);
   const [exchangeLog, setExchangeLog] = useState<Exchange[]>([]);
   const [lastRound, setLastRound] = useState<RoundResult | null>(null);
@@ -98,7 +108,7 @@ function InteractiveArenaScreen({ initialBattle, onFinished }: Props) {
       setExchangeLog([]);
       setSelectedIndices([]);
       setPendingAbilityChoice(false);
-      setSelectedAbility("flip");
+      setSelectedAbility(defaultAbility(character.abilities));
       setFlipTargets([]);
       setPhase("playing");
     } catch (err) {
@@ -126,7 +136,7 @@ function InteractiveArenaScreen({ initialBattle, onFinished }: Props) {
       setBattle(response.battle);
       setSelectedIndices([]);
       setPendingAbilityChoice(false);
-      setSelectedAbility("flip");
+      setSelectedAbility(defaultAbility(character.abilities));
       setFlipTargets([]);
 
       if (response.roundComplete && response.round) {
@@ -261,7 +271,10 @@ function InteractiveArenaScreen({ initialBattle, onFinished }: Props) {
             <div className="arena__abilities">
               <p className="arena__hint">Разыгрывается действие ×{selectedIndices.length}. Выбери способность:</p>
               <div className="arena__ability-list">
-                {ABILITY_OPTIONS.map((option) => {
+                {availableAbilityOptions.length === 0 && (
+                  <p className="arena__hint">Нет доступных способностей — можно только сходить обычным ударом или защитой.</p>
+                )}
+                {availableAbilityOptions.map((option) => {
                   const affordable = isAffordable(option, selectedIndices.length);
                   const isSelected = selectedAbility === option.type;
                   return (
@@ -285,7 +298,7 @@ function InteractiveArenaScreen({ initialBattle, onFinished }: Props) {
                   );
                 })}
               </div>
-              {selectedAbility === "flip" && (
+              {selectedAbility === "flip" && availableAbilityOptions.length > 0 && (
                 <p className="arena__hint">
                   Выбери до {selectedIndices.length} бит противника, чтобы перевернуть их ({flipTargets.length}/{selectedIndices.length})
                 </p>
@@ -294,7 +307,7 @@ function InteractiveArenaScreen({ initialBattle, onFinished }: Props) {
                 <button className="arena__action arena__action--secondary" disabled={busy} onClick={() => setPendingAbilityChoice(false)}>
                   Назад
                 </button>
-                <button className="arena__action" disabled={busy} onClick={handleSendActionMove}>
+                <button className="arena__action" disabled={busy || availableAbilityOptions.length === 0} onClick={handleSendActionMove}>
                   Подтвердить способность
                 </button>
               </div>

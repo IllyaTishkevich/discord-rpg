@@ -153,7 +153,13 @@ function App() {
   }
 
   if (state.status === "arena") {
-    return <ArenaScreen initialBattle={state.battle} onFinished={(battle) => handleBattleFinished(state.character, battle)} />;
+    return (
+      <ArenaScreen
+        initialBattle={state.battle}
+        character={state.character}
+        onFinished={(battle) => handleBattleFinished(state.character, battle)}
+      />
+    );
   }
 
   if (state.status === "battle-result") {

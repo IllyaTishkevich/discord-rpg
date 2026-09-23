@@ -1,3 +1,5 @@
+import type { AbilityType } from "./battle";
+
 export type BitFace = "attack" | "defense" | "action";
 
 export interface BitDefinition {
@@ -27,4 +29,8 @@ export interface Character {
   level: number;
   xp: number;
   coins: number;
+  // Which combat abilities this character can currently choose from — see
+  // BattleService::assertAbilityAvailable() on the backend, the actual
+  // enforcement this list is meant to preview client-side.
+  abilities: AbilityType[];
 }

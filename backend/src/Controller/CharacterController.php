@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Entity\Ability;
 use App\Entity\Bit;
 use App\Entity\Character;
 use App\Entity\User;
@@ -91,6 +92,13 @@ class CharacterController extends AbstractApiController
                 static fn (Bit $bit) => ['faceA' => $bit->getFaceA()->value, 'faceB' => $bit->getFaceB()->value],
                 $character->getAllBits(),
             ),
+            // The Activity's ability picker (docs/BATTLE_RULES.md §3.1) filters
+            // to these — abilities are now configurable per class/character/
+            // equipment (see Character::getAllAbilities()), not a fixed set of 4.
+            'abilities' => array_values(array_unique(array_map(
+                static fn (Ability $ability) => $ability->getType()->value,
+                $character->getAllAbilities(),
+            ))),
         ];
     }
 }

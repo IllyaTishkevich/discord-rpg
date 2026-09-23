@@ -3,6 +3,7 @@ import { fetchBattle, fetchLatestRound, submitActions, throwRound } from "../api
 import { BitCoin } from "../components/BitCoin";
 import { StatBar } from "../components/StatBar";
 import type { AbilityChoice, AbilityType, BattleState, RoundResult, ThrowResult } from "../types/battle";
+import type { Character } from "../types/character";
 import "./ArenaScreen.css";
 
 type Phase = "idle" | "thrown" | "waiting" | "resolved";
@@ -27,8 +28,17 @@ function isAffordable(option: AbilityOption, actionCount: number): boolean {
   return actionCount >= (option.fixedCost ?? 0);
 }
 
+// Prefer Flip as the default pick (matches the old always-Flip behavior) but
+// only when the character actually has it — otherwise fall back to whatever
+// it does have, so the pre-selected ability is never one the backend will
+// reject (see BattleService::assertAbilityAvailable()).
+function defaultAbility(available: AbilityType[]): AbilityType {
+  return available.includes("flip") ? "flip" : (available[0] ?? "flip");
+}
+
 interface Props {
   initialBattle: BattleState;
+  character: Character;
   onFinished: (battle: BattleState, lastRound: RoundResult | null) => void;
 }
 
@@ -39,15 +49,16 @@ interface Props {
  * (ArenaScreen, PvE/event) hasn't been ported to the live two-player
  * protocol yet.
  */
-export function PvpArenaScreen({ initialBattle, onFinished }: Props) {
+export function PvpArenaScreen({ initialBattle, character, onFinished }: Props) {
   const [battle, setBattle] = useState(initialBattle);
   const [phase, setPhase] = useState<Phase>("idle");
   const [throwResult, setThrowResult] = useState<ThrowResult | null>(null);
   const [lastRound, setLastRound] = useState<RoundResult | null>(null);
-  const [selectedAbility, setSelectedAbility] = useState<AbilityType>("flip");
+  const [selectedAbility, setSelectedAbility] = useState<AbilityType>(defaultAbility(character.abilities));
   const [selectedTargets, setSelectedTargets] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const availableAbilityOptions = ABILITY_OPTIONS.filter((option) => character.abilities.includes(option.type));
 
   async function handleThrow() {
     setBusy(true);
@@ -55,7 +66,7 @@ export function PvpArenaScreen({ initialBattle, onFinished }: Props) {
     try {
       const result = await throwRound(battle.id);
       setThrowResult(result);
-      setSelectedAbility("flip");
+      setSelectedAbility(defaultAbility(character.abilities));
       setSelectedTargets([]);
       setPhase("thrown");
     } catch (err) {
@@ -151,7 +162,7 @@ export function PvpArenaScreen({ initialBattle, onFinished }: Props) {
     setPhase("idle");
   }
 
-  const selectedOption = ABILITY_OPTIONS.find((option) => option.type === selectedAbility);
+  const selectedOption = availableAbilityOptions.find((option) => option.type === selectedAbility);
 
   return (
     <div className="arena">
@@ -192,7 +203,10 @@ export function PvpArenaScreen({ initialBattle, onFinished }: Props) {
             <div className="arena__abilities">
               <p className="arena__hint">Очки действия: {throwResult.playerActionCount}. Выбери способность:</p>
               <div className="arena__ability-list">
-                {ABILITY_OPTIONS.map((option) => {
+                {availableAbilityOptions.length === 0 && (
+                  <p className="arena__hint">Нет доступных способностей — очки действия сгорят без эффекта.</p>
+                )}
+                {availableAbilityOptions.map((option) => {
                   const affordable = isAffordable(option, throwResult.playerActionCount);
                   const isSelected = selectedAbility === option.type;
                   return (
@@ -218,7 +232,7 @@ export function PvpArenaScreen({ initialBattle, onFinished }: Props) {
                   Выбрано: <strong>{selectedOption.label}</strong>. {selectedOption.description}.
                 </p>
               )}
-              {selectedAbility === "flip" && (
+              {selectedAbility === "flip" && availableAbilityOptions.length > 0 && (
                 <p className="arena__hint">
                   Выбери до {throwResult.playerActionCount} бит противника, чтобы перевернуть их ({selectedTargets.length}/{throwResult.playerActionCount})
                 </p>
