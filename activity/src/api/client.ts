@@ -13,16 +13,18 @@ export const devToken = typeof window !== "undefined" ? new URLSearchParams(wind
 export const isEmbeddedInDiscord = !devToken && typeof window !== "undefined" && window.self !== window.top;
 const BASE_URL = isEmbeddedInDiscord ? "/.proxy/api" : (import.meta.env.VITE_BACKEND_API_URL ?? "http://localhost:8000/api");
 
-// Same proxying rule as BASE_URL, but for static files served straight off
-// the backend (e.g. /uploads/items/...) rather than the /api namespace —
-// Discord's URL Mapping is a root-prefix mapping (docs/PRODUCTION_SETUP.md
-// §A.2: "/" → backend domain), so /.proxy/uploads/... is proxied exactly
-// like /.proxy/api/... already is. Derived from the same env var as
-// BASE_URL (stripping the trailing /api) rather than a new one, so
-// deployments don't need an extra variable just for this.
-export const IMAGE_BASE_URL = isEmbeddedInDiscord
-  ? "/.proxy"
-  : (import.meta.env.VITE_BACKEND_API_URL ?? "http://localhost:8000/api").replace(/\/api\/?$/, "");
+/**
+ * URL for an uploaded catalog icon (Monster/Bit/Ability/Equipment/Item),
+ * served by the backend's UploadsController under /api/uploads/<directory>/<filename>
+ * — deliberately under /api rather than a bare /uploads/... prefix, so it's
+ * proxied through the exact same Discord Developer Portal URL Mapping (and
+ * the same BASE_URL above) as every other request, instead of depending on
+ * a *second*, separately-configured mapping for a bare /uploads prefix to
+ * also exist and work inside the real Discord client.
+ */
+export function getIconUrl(directory: "monsters" | "bits" | "classes" | "abilities" | "equipment" | "items", filename: string): string {
+  return `${BASE_URL}/uploads/${directory}/${filename}`;
+}
 
 const AUTH_TOKEN_STORAGE_KEY = "discord-rpg.auth-token";
 

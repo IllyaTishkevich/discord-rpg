@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { discardInventoryItem, fetchInventory, sellInventoryItem, useInventoryItem } from "../api/inventory";
 import { fetchMyCharacter } from "../api/characters";
-import { IMAGE_BASE_URL } from "../api/client";
+import { getIconUrl } from "../api/client";
 import type { Character } from "../types/character";
 import type { InventoryActionResult, InventoryItem, InventoryState, ItemType } from "../types/item";
 import "./InventoryScreen.css";
@@ -98,7 +98,7 @@ export function InventoryScreen({ character, onBack }: Props) {
               >
                 {item &&
                   (item.iconName ? (
-                    <img className="inventory__icon" src={`${IMAGE_BASE_URL}/uploads/items/${item.iconName}`} alt={item.name} />
+                    <img className="inventory__icon" src={getIconUrl("items", item.iconName)} alt={item.name} />
                   ) : (
                     <span className="inventory__icon inventory__icon--placeholder" aria-hidden="true">
                       ?

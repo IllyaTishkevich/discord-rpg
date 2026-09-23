@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchMyCharacter } from "../api/characters";
-import { IMAGE_BASE_URL } from "../api/client";
+import { getIconUrl } from "../api/client";
 import { fetchItems, purchaseItem } from "../api/items";
 import type { Character } from "../types/character";
 import type { CatalogItem, ItemType } from "../types/item";
@@ -77,7 +77,7 @@ export function ShopScreen({ character, onBack }: Props) {
                 onClick={() => setSelectedId(item.id)}
               >
                 {item.iconName ? (
-                  <img className="shop__icon" src={`${IMAGE_BASE_URL}/uploads/items/${item.iconName}`} alt={item.name} />
+                  <img className="shop__icon" src={getIconUrl("items", item.iconName)} alt={item.name} />
                 ) : (
                   <span className="shop__icon shop__icon--placeholder" aria-hidden="true">
                     ?

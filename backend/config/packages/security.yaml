@@ -44,6 +44,9 @@ security:
         - { path: ^/api/auth, roles: PUBLIC_ACCESS }
         - { path: ^/api/bot, roles: PUBLIC_ACCESS }
         - { path: ^/api/equipment$, methods: [GET], roles: PUBLIC_ACCESS }
+        # Catalog icons (UploadsController) — an <img src> can't carry a
+        # Bearer token, and these are just public catalog artwork anyway.
+        - { path: ^/api/uploads/, methods: [GET], roles: PUBLIC_ACCESS }
         - { path: ^/api/characters/leaderboard$, methods: [GET], roles: PUBLIC_ACCESS }
         - { path: ^/api/tournaments/(open|latest)$, methods: [GET], roles: PUBLIC_ACCESS }
         - { path: ^/api/tournaments/\d+$, methods: [GET], roles: PUBLIC_ACCESS }
