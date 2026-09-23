@@ -61,6 +61,8 @@ class ItemCrudController extends AbstractCrudController
         yield IntegerField::new('bitMultiplierB', 'Множитель на B')->hideOnIndex();
         yield AssociationField::new('grantedAbility', 'Даёт способность (для "Добавляет способность")')->hideOnIndex();
         yield IntegerField::new('capacityBonus', 'Бонус ячеек (для "Увеличивает инвентарь")')->hideOnIndex();
+        yield IntegerField::new('maxHpBonus', 'Бонус макс. HP (для "Увеличивает макс. HP")')->hideOnIndex();
+        yield IntegerField::new('maxEnergyBonus', 'Бонус макс. энергии (для "Увеличивает макс. энергию")')->hideOnIndex();
 
         yield FormField::addFieldset('Мгновенный эффект (зелье/свиток)')->onlyOnForms();
         yield IntegerField::new('healAmount', 'HP (для "Восполняет HP")')->hideOnIndex();

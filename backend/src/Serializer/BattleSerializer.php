@@ -42,7 +42,7 @@ class BattleSerializer
             ],
             'character' => [
                 'hp' => $battle->getCharacter()->getHp(),
-                'maxHp' => $battle->getCharacter()->getMaxHp(),
+                'maxHp' => $battle->getCharacter()->getEffectiveMaxHp(),
             ],
             'rewards' => $this->rewardsFor($battle),
         ];
@@ -100,11 +100,11 @@ class BattleSerializer
             'opponent' => [
                 'name' => $opponent?->getUser()->getDisplayName(),
                 'hp' => $opponent?->getHp(),
-                'maxHp' => $opponent?->getMaxHp(),
+                'maxHp' => $opponent?->getEffectiveMaxHp(),
             ],
             'character' => [
                 'hp' => $you->getHp(),
-                'maxHp' => $you->getMaxHp(),
+                'maxHp' => $you->getEffectiveMaxHp(),
             ],
             'rewards' => BattleStatus::Won === $status
                 ? ['xp' => BattleService::PVP_XP_REWARD, 'coins' => BattleService::PVP_COIN_REWARD]

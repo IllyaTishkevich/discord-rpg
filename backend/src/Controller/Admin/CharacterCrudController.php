@@ -33,9 +33,16 @@ class CharacterCrudController extends AbstractCrudController
         yield IdField::new('id')->hideOnForm();
         yield AssociationField::new('user', 'Игрок')->hideOnForm();
         yield AssociationField::new('characterClass', 'Класс')->hideOnForm();
-        yield IntegerField::new('maxHp', 'Макс. HP');
+        yield IntegerField::new('maxHp', 'Макс. HP (база)');
+        // Read-only — includes a currently-equipped IncreaseMaxHp item's
+        // bonus (Character::getEffectiveMaxHp()), which the base field
+        // above deliberately does not, to avoid an admin silently baking a
+        // temporary equipped bonus into the persisted base on save (see
+        // that method's docblock).
+        yield IntegerField::new('effectiveMaxHp', 'Макс. HP (эфф.)')->onlyOnIndex();
         yield IntegerField::new('hp', 'HP');
-        yield IntegerField::new('maxEnergy', 'Макс. энергия');
+        yield IntegerField::new('maxEnergy', 'Макс. энергия (база)');
+        yield IntegerField::new('effectiveMaxEnergy', 'Макс. энергия (эфф.)')->onlyOnIndex();
         yield IntegerField::new('energy', 'Энергия');
         yield IntegerField::new('level', 'Уровень');
         yield IntegerField::new('xp', 'XP');

@@ -220,4 +220,50 @@ class InventoryServiceTest extends TestCase
         $this->expectException(InventoryFullException::class);
         $this->inventoryService->purchaseItem($character, new Item('Меч', 20, ItemType::Weapon, ItemEffectType::AddBit));
     }
+
+    public function testEquippingAnIncreaseMaxHpItemRaisesTheEffectiveMax(): void
+    {
+        $character = $this->makeCharacter();
+        $item = new Item('Амулет живучести', 20, ItemType::Armor, ItemEffectType::IncreaseMaxHp);
+        $item->setMaxHpBonus(20);
+        $row = $this->addRow($character, $item);
+
+        $this->inventoryService->useItem($character, $row);
+
+        self::assertSame(50, $character->getEffectiveMaxHp());
+    }
+
+    public function testAutoSwappingAwayAnEquippedIncreaseMaxHpItemReClampsCurrentHp(): void
+    {
+        $character = $this->makeCharacter();
+        $amulet = $this->addRow($character, (new Item('Амулет живучести', 20, ItemType::Armor, ItemEffectType::IncreaseMaxHp))->setMaxHpBonus(20));
+        $plainArmor = $this->addRow($character, new Item('Простой доспех', 20, ItemType::Armor, ItemEffectType::AddBit));
+
+        $this->inventoryService->useItem($character, $amulet);
+        $character->setHp(45); // only valid while the +20 amulet is equipped (base is 30)
+        self::assertSame(45, $character->getHp());
+
+        // Auto-swap: equipping the plain armor (same type) unequips the
+        // amulet, dropping the effective max back to the base 30 — current
+        // HP must be re-clamped down, not left floating above the new cap.
+        $this->inventoryService->useItem($character, $plainArmor);
+
+        self::assertSame(30, $character->getEffectiveMaxHp());
+        self::assertSame(30, $character->getHp(), 'HP must be re-clamped down when its bonus source is unequipped');
+    }
+
+    public function testDiscardingAnEquippedIncreaseMaxEnergyItemReClampsCurrentEnergy(): void
+    {
+        $character = $this->makeCharacter();
+        $ring = $this->addRow($character, (new Item('Кольцо бодрости', 10, ItemType::Shield, ItemEffectType::IncreaseMaxEnergy))->setMaxEnergyBonus(5));
+
+        $this->inventoryService->useItem($character, $ring);
+        $character->setEnergy(15);
+        self::assertSame(15, $character->getEnergy());
+
+        $this->inventoryService->discardItem($character, $ring);
+
+        self::assertSame(10, $character->getEffectiveMaxEnergy());
+        self::assertSame(10, $character->getEnergy(), 'energy must be re-clamped down when its bonus source is discarded');
+    }
 }

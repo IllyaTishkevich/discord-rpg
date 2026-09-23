@@ -94,6 +94,13 @@ class InventoryService
                 }
             }
             $row->setEquipped(true);
+            // Re-clamp: equipping (or auto-swapping away) an IncreaseMaxHp/
+            // IncreaseMaxEnergy item can move the effective max in either
+            // direction — setHp()/setEnergy() clamp against it, so calling
+            // them with the current value just re-applies the (possibly
+            // now-lower) ceiling; harmless when the max only went up.
+            $character->setHp($character->getHp());
+            $character->setEnergy($character->getEnergy());
             $this->entityManager->flush();
 
             return;
@@ -138,6 +145,10 @@ class InventoryService
             $this->entityManager->remove($row->getGrantedBit());
         }
         $this->entityManager->remove($row);
+        // Re-clamp in case the removed row was an equipped IncreaseMaxHp/
+        // IncreaseMaxEnergy item — see the matching comment in useItem().
+        $character->setHp($character->getHp());
+        $character->setEnergy($character->getEnergy());
         $this->entityManager->flush();
     }
 

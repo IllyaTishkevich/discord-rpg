@@ -59,7 +59,7 @@ class EquipmentController extends AbstractApiController
 
         return $this->json([
             'coins' => $character->getCoins(),
-            'maxHp' => $character->getMaxHp(),
+            'maxHp' => $character->getEffectiveMaxHp(),
             'hp' => $character->getHp(),
         ], 201);
     }

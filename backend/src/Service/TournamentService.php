@@ -120,8 +120,8 @@ class TournamentService
     {
         $aBits = $a->getAllBits();
         $bBits = $b->getAllBits();
-        $aHp = $a->getMaxHp();
-        $bHp = $b->getMaxHp();
+        $aHp = $a->getEffectiveMaxHp();
+        $bHp = $b->getEffectiveMaxHp();
 
         for ($round = 0; $round < self::MAX_SIMULATED_ROUNDS; ++$round) {
             $aThrows = array_map(static fn ($bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB(), $bit->getMultiplierA(), $bit->getMultiplierB()), $aBits);

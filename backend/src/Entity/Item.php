@@ -89,6 +89,14 @@ class Item
     #[ORM\Column(nullable: true)]
     private ?int $capacityBonus = null;
 
+    // --- IncreaseMaxHp / IncreaseMaxEnergy fields ---
+
+    #[ORM\Column(nullable: true)]
+    private ?int $maxHpBonus = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?int $maxEnergyBonus = null;
+
     // --- Consumable fields (Potion/Scroll) ---
 
     #[ORM\Column(nullable: true)]
@@ -309,6 +317,30 @@ class Item
     public function setCapacityBonus(?int $capacityBonus): static
     {
         $this->capacityBonus = $capacityBonus;
+
+        return $this;
+    }
+
+    public function getMaxHpBonus(): ?int
+    {
+        return $this->maxHpBonus;
+    }
+
+    public function setMaxHpBonus(?int $maxHpBonus): static
+    {
+        $this->maxHpBonus = $maxHpBonus;
+
+        return $this;
+    }
+
+    public function getMaxEnergyBonus(): ?int
+    {
+        return $this->maxEnergyBonus;
+    }
+
+    public function setMaxEnergyBonus(?int $maxEnergyBonus): static
+    {
+        $this->maxEnergyBonus = $maxEnergyBonus;
 
         return $this;
     }

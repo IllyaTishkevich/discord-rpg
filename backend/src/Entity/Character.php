@@ -4,7 +4,6 @@ namespace App\Entity;
 
 use App\Enum\AbilityType;
 use App\Enum\ItemEffectType;
-use App\Enum\ItemType;
 use App\Repository\CharacterRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -231,19 +230,47 @@ class Character
 
     public function setHp(int $hp): static
     {
-        $this->hp = max(0, min($hp, $this->maxHp));
+        $this->hp = max(0, min($hp, $this->getEffectiveMaxHp()));
 
         return $this;
     }
 
+    /**
+     * Raw persisted base — for admin editing/corrections and as the input
+     * to increaseMaxHp()'s permanent shop-equipment bonus. Game logic and
+     * anything player-facing (serializers, battle/tournament simulation)
+     * must use getEffectiveMaxHp() instead, which also includes whatever a
+     * currently-equipped IncreaseMaxHp item is granting — kept as a
+     * separate method (rather than folding the live bonus into this
+     * getter) specifically so EasyAdmin's CharacterCrudController, which
+     * binds straight to getMaxHp()/setMaxHp(), keeps editing the true base
+     * value: if this getter returned the inflated total, an admin who
+     * opens the form and saves without changing anything would silently
+     * bake the equipped item's temporary bonus into the persisted base.
+     */
     public function getMaxHp(): int
     {
         return $this->maxHp;
     }
 
     /**
-     * Permanently raises the HP cap (e.g. from equipment) and heals by the
-     * same amount, matching how "+max HP" items conventionally work.
+     * Base HP cap plus whatever a currently-equipped ItemEffectType::IncreaseMaxHp
+     * item is granting (see getInventoryCapacity() for the same live-bonus
+     * pattern applied to a Bag's capacity instead of HP). This is what
+     * setHp() actually clamps against, and what every player-facing surface
+     * (serializers, the bot, tournament simulation) should read — see
+     * getMaxHp()'s own docblock for why that one stays raw-only.
+     */
+    public function getEffectiveMaxHp(): int
+    {
+        return $this->maxHp + $this->sumEquippedBonus(ItemEffectType::IncreaseMaxHp, static fn (Item $item) => $item->getMaxHpBonus());
+    }
+
+    /**
+     * Permanently raises the HP cap (e.g. from a shop Equipment purchase —
+     * EquipmentService::purchase() — a one-time, non-reversible effect,
+     * unlike an equippable Item's IncreaseMaxHp) and heals by the same
+     * amount, matching how "+max HP" items conventionally work.
      */
     public function increaseMaxHp(int $amount): static
     {
@@ -271,14 +298,29 @@ class Character
 
     public function setEnergy(int $energy): static
     {
-        $this->energy = max(0, min($energy, $this->maxEnergy));
+        $this->energy = max(0, min($energy, $this->getEffectiveMaxEnergy()));
 
         return $this;
     }
 
+    /**
+     * Raw persisted base — see getMaxHp()'s docblock for why this stays
+     * raw-only rather than including the live equipped-item bonus (same
+     * EasyAdmin-corruption concern, same fix: getEffectiveMaxEnergy() below).
+     */
     public function getMaxEnergy(): int
     {
         return $this->maxEnergy;
+    }
+
+    /**
+     * Base energy cap plus whatever a currently-equipped
+     * ItemEffectType::IncreaseMaxEnergy item is granting — see
+     * getEffectiveMaxHp()'s docblock, same pattern.
+     */
+    public function getEffectiveMaxEnergy(): int
+    {
+        return $this->maxEnergy + $this->sumEquippedBonus(ItemEffectType::IncreaseMaxEnergy, static fn (Item $item) => $item->getMaxEnergyBonus());
     }
 
     public function setMaxEnergy(int $maxEnergy): static
@@ -385,19 +427,36 @@ class Character
     }
 
     /**
-     * 12 cells, plus an equipped Bag's bonus if any — at most one Bag can be
-     * equipped at a time (InventoryService's auto-swap), so this is a single
-     * lookup, not a sum.
+     * 12 cells, plus the combined bonus of every currently-equipped
+     * IncreaseCapacity item — driven by effect type, not by ItemType::Bag
+     * specifically (nothing actually restricts that effect to bags), so
+     * this sums rather than returns the first match: two different-typed
+     * equipped items (e.g. a bag AND some other slot) could both carry it
+     * at once, since only one item *per type* can be equipped, not one
+     * overall.
      */
     public function getInventoryCapacity(): int
     {
+        return self::BASE_INVENTORY_CAPACITY + $this->sumEquippedBonus(ItemEffectType::IncreaseCapacity, static fn (Item $item) => $item->getCapacityBonus());
+    }
+
+    /**
+     * Shared "sum this numeric bonus across every currently-equipped item
+     * with this exact effect type" pattern behind getInventoryCapacity()/
+     * getEffectiveMaxHp()/getEffectiveMaxEnergy() — unlike getAllBits()/
+     * getAllAbilities() (which collect entities, not numbers), so it stays
+     * a separate helper rather than folding into those.
+     */
+    private function sumEquippedBonus(ItemEffectType $effectType, callable $amountGetter): int
+    {
+        $sum = 0;
         foreach ($this->inventoryItems as $inventoryItem) {
-            if ($inventoryItem->isEquipped() && ItemType::Bag === $inventoryItem->getItem()->getType()) {
-                return self::BASE_INVENTORY_CAPACITY + ($inventoryItem->getItem()->getCapacityBonus() ?? 0);
+            if ($inventoryItem->isEquipped() && $effectType === $inventoryItem->getItem()->getEffectType()) {
+                $sum += $amountGetter($inventoryItem->getItem()) ?? 0;
             }
         }
 
-        return self::BASE_INVENTORY_CAPACITY;
+        return $sum;
     }
 
     /**
