@@ -99,9 +99,12 @@ class Battle
     private bool $opponentAccepted = true;
 
     /**
-     * PvP-only: deadline for the current pending throw. Checked lazily (on
-     * the next request that touches this battle) rather than via a worker —
-     * see docs/BATTLE_ROOM_DESIGN.md §6.
+     * PvP-only: deadline for whichever side currently owes the next move
+     * (lead or respond) in the interactive exchange flow — refreshed every
+     * time the "turn" passes to a (possibly different) side. Checked lazily
+     * (on the next request that touches this battle) rather than via a
+     * worker — see docs/BATTLE_ROOM_DESIGN.md §6 and
+     * BattleService::applyPvpMoveTimeoutIfExpired().
      */
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $roundDeadlineAt = null;
@@ -123,27 +126,12 @@ class Battle
     private ?array $pendingOpponentThrows = null;
 
     /**
-     * PvP-only: each side's submitted ability choice for the current round
-     * (AbilityChoice::toArray() shape — which ability, and targets if it's
-     * Flip), stored independently until both are present. See
-     * BattleService::submitActions(). Column name predates abilities (it
-     * only stored flip target indices then) — kept to avoid a migration.
-     *
-     * @var array{ability: string, targets: int[]}|null
-     */
-    #[ORM\Column(type: 'json', nullable: true)]
-    private ?array $pendingCharacterActionTargets = null;
-
-    /** @var array{ability: string, targets: int[]}|null */
-    #[ORM\Column(type: 'json', nullable: true)]
-    private ?array $pendingOpponentActionTargets = null;
-
-    /**
-     * PvE/event only: mid-round state for the interactive step-by-step
-     * exchange flow (ExchangeRoundState::toArray() shape) — non-null
-     * exactly while a round's exchanges are still being played out, i.e.
-     * whenever there's a pending throw for a non-PvP battle. See
-     * BattleService::submitExchangeMove().
+     * Mid-round state for the interactive step-by-step exchange flow
+     * (ExchangeRoundState::toArray() shape) — non-null exactly while a
+     * round's exchanges are still being played out, i.e. whenever there's a
+     * pending throw. Used by both PvE/event (bot auto-plays its side) and
+     * PvP (both sides are real players, each submitting their own lead/
+     * respond via separate requests — see BattleService::submitExchangeMove().
      *
      * @var array<string, mixed>|null
      */
@@ -321,7 +309,8 @@ class Battle
      * Marks the given side ready. Returns true if BOTH sides are now ready
      * (i.e. the caller should transition the battle to in_progress and
      * throw the first round) — kept as a return value rather than doing it
-     * here so BattleService stays the single place that touches CombatResolver.
+     * here so BattleService stays the single place that touches the combat
+     * engine.
      */
     public function markReady(bool $asOpponentSide): bool
     {
@@ -372,45 +361,6 @@ class Battle
         $this->pendingOpponentThrows = $opponentThrows;
 
         return $this;
-    }
-
-    /**
-     * @return array{ability: string, targets: int[]}|null AbilityChoice::toArray()/fromArray() shape
-     */
-    public function getPendingCharacterAbilityChoice(): ?array
-    {
-        return $this->pendingCharacterActionTargets;
-    }
-
-    /**
-     * @return array{ability: string, targets: int[]}|null
-     */
-    public function getPendingOpponentAbilityChoice(): ?array
-    {
-        return $this->pendingOpponentActionTargets;
-    }
-
-    /**
-     * @param array{ability: string, targets: int[]} $choice AbilityChoice::toArray()
-     */
-    public function submitAbilityChoice(bool $asOpponentSide, array $choice): void
-    {
-        if ($asOpponentSide) {
-            $this->pendingOpponentActionTargets = $choice;
-        } else {
-            $this->pendingCharacterActionTargets = $choice;
-        }
-    }
-
-    public function bothAbilityChoicesSubmitted(): bool
-    {
-        return null !== $this->pendingCharacterActionTargets && null !== $this->pendingOpponentActionTargets;
-    }
-
-    public function clearPendingAbilityChoices(): void
-    {
-        $this->pendingCharacterActionTargets = null;
-        $this->pendingOpponentActionTargets = null;
     }
 
     /**

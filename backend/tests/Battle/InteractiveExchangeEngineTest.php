@@ -158,4 +158,125 @@ class InteractiveExchangeEngineTest extends TestCase
 
         self::assertSame(BitFace::Attack, $state->opponentThrows[0]->thrownFace);
     }
+
+    // -----------------------------------------------------------------
+    // PvP (both sides real — no bot auto-play): startPvpRound(),
+    // turnForSide(), submitPvpLead()/passPvpLead(), submitPvpRespond().
+    // -----------------------------------------------------------------
+
+    public function testStartPvpRoundNeverAutoPlaysEvenWhenOpponentLeads(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        $state = $engine->startPvpRound(
+            [$this->bit(BitFace::Defense)],
+            [$this->bit(BitFace::Attack, true)],
+        );
+
+        // Unlike startRound(), nobody has moved yet — opponent has priority
+        // (more advantage) but must still submit their own lead explicitly.
+        self::assertFalse($state->leaderIsPlayer);
+        self::assertNull($state->pendingLeaderMove);
+        self::assertSame('lead', $engine->turnForSide($state, false));
+        self::assertSame('wait', $engine->turnForSide($state, true));
+    }
+
+    public function testSubmitPvpLeadPausesInsteadOfAutoResolving(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        $state = $engine->startPvpRound(
+            [$this->bit(BitFace::Attack, true)],
+            [$this->bit(BitFace::Defense)],
+        );
+
+        $state = $engine->submitPvpLead($state, true, [0], null);
+
+        self::assertSame(['face' => 'attack', 'count' => 1, 'bonus' => 0], $state->pendingLeaderMove);
+        self::assertSame('respond', $engine->turnForSide($state, false));
+        self::assertSame('wait', $engine->turnForSide($state, true));
+    }
+
+    public function testSubmitPvpRespondResolvesAndAlternatesLeadToResponder(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        $state = $engine->startPvpRound(
+            [$this->bit(BitFace::Attack, true), $this->bit(BitFace::Defense)],
+            [$this->bit(BitFace::Defense), $this->bit(BitFace::Attack)],
+        );
+
+        $state = $engine->submitPvpLead($state, true, [0], null);
+        ['state' => $state, 'exchange' => $exchange] = $engine->submitPvpRespond($state, false, [0], null);
+
+        self::assertSame(0, $exchange['damageToOpponent']);
+        self::assertTrue($exchange['leaderIsPlayer']);
+        self::assertNull($state->pendingLeaderMove);
+        // The responder (opponent) leads next — not a hardcoded side, as it
+        // would be if this reused PvE's player-only submitRespond().
+        self::assertSame('lead', $engine->turnForSide($state, false));
+        self::assertSame('wait', $engine->turnForSide($state, true));
+    }
+
+    public function testPassPvpLeadHandsInitiativeWithoutConsumingBits(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        $state = $engine->startPvpRound(
+            [$this->bit(BitFace::Attack, true)],
+            [$this->bit(BitFace::Attack)],
+        );
+
+        $state = $engine->passPvpLead($state, true);
+
+        self::assertSame('lead', $engine->turnForSide($state, false));
+        self::assertSame(1, $state->remainingCount(true), 'passing must not consume the passing side\'s bit');
+    }
+
+    public function testCannotSubmitPvpLeadOutOfTurn(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        $state = $engine->startPvpRound(
+            [$this->bit(BitFace::Defense)],
+            [$this->bit(BitFace::Attack, true)],
+        );
+
+        $this->expectException(InvalidExchangeMoveException::class);
+        $engine->submitPvpLead($state, true, [0], null);
+    }
+
+    public function testCannotSubmitPvpRespondWithoutAPendingLead(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        $state = $engine->startPvpRound(
+            [$this->bit(BitFace::Attack, true)],
+            [$this->bit(BitFace::Defense)],
+        );
+
+        $this->expectException(InvalidExchangeMoveException::class);
+        $engine->submitPvpRespond($state, false, [0], null);
+    }
+
+    public function testPvpOneSideExhaustedOtherContinuesSolo(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        $state = $engine->startPvpRound(
+            [$this->bit(BitFace::Attack, true), $this->bit(BitFace::Attack)],
+            [$this->bit(BitFace::Defense)],
+        );
+
+        $state = $engine->submitPvpLead($state, true, [0], null);
+        ['state' => $state] = $engine->submitPvpRespond($state, false, [0], null);
+
+        // Opponent is now fully spent (their only bit is used) but the
+        // player still has one attack bit left — player must keep leading
+        // solo, same "continue until both sides run out" rule as PvE.
+        self::assertSame(0, $state->remainingCount(false));
+        self::assertSame('lead', $engine->turnForSide($state, true));
+
+        $state = $engine->submitPvpLead($state, true, [1], null);
+        // Opponent must still explicitly respond (pass, having nothing left)
+        // to resolve the exchange — nobody auto-plays their empty hand.
+        self::assertSame('respond', $engine->turnForSide($state, false));
+
+        ['state' => $state, 'exchange' => $exchange] = $engine->submitPvpRespond($state, false, [], null);
+        self::assertSame(1, $exchange['damageToOpponent']);
+        self::assertTrue($state->isOver());
+    }
 }

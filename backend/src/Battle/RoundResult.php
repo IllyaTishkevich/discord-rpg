@@ -9,8 +9,7 @@ final class RoundResult
     /**
      * @param BitFace[]  $playerFaces   final faces shown on the player's side, after all flips
      * @param BitFace[]  $opponentFaces final faces shown on the opponent's side, after all flips
-     * @param Exchange[] $exchanges     per-exchange log (ExchangeResolver only — empty for the
-     *                                  old simultaneous CombatResolver, still used by PvP)
+     * @param Exchange[] $exchanges     per-exchange log
      */
     public function __construct(
         public readonly array $playerFaces,

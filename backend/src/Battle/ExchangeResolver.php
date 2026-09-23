@@ -15,9 +15,12 @@ use App\Enum\BitFace;
  * full damage each time) until it, too, runs out. Only then does the round
  * end and a fresh throw start the next one.
  *
- * Currently wired into PvE/event/tournament auto-play only (BattleService,
- * TournamentService) — PvP still uses the older CombatResolver, see
- * docs/COMBAT_V2_DESIGN.md §7 for why that's deferred.
+ * Wired into non-interactive whole-round-at-once auto-play: PvE/event bot
+ * text commands (BattleService::resolveRound()) and tournament simulation
+ * (TournamentService). The interactive step-by-step flow used by the
+ * Activity (PvE/event/PvP alike) uses InteractiveExchangeEngine instead —
+ * the same rules, played out one exchange per request rather than all at
+ * once.
  *
  * Not thread-safe / not reusable across calls — resolveRound() resets all
  * instance state at the top of each invocation.
@@ -160,7 +163,7 @@ final class ExchangeResolver
      * Heuristic default (docs/COMBAT_V2_DESIGN.md §6) — offense first, then
      * bank action points, defense last since it does nothing without an
      * incoming attack to block. Subject to tuning once real playtesting
-     * data exists, same as BotActionStrategy.
+     * data exists.
      */
     private function chooseLeadMove(bool $isPlayerSide): Move
     {

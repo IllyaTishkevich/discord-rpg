@@ -54,28 +54,7 @@ final class InteractiveExchangeEngine
      */
     public function startRound(array $playerThrows, array $opponentThrows, AbilityChoice $botChoice = new AbilityChoice(AbilityType::Flip)): array
     {
-        $playerThrows = array_values($playerThrows);
-        $opponentThrows = array_values($opponentThrows);
-
-        $playerAdvantage = \count(array_filter($playerThrows, static fn (BitThrow $t) => $t->thrownAdvantage));
-        $opponentAdvantage = \count(array_filter($opponentThrows, static fn (BitThrow $t) => $t->thrownAdvantage));
-        $leaderIsPlayer = $playerAdvantage === $opponentAdvantage
-            ? ($this->randomBool)()
-            : $playerAdvantage > $opponentAdvantage;
-
-        $state = new ExchangeRoundState(
-            $playerThrows,
-            $opponentThrows,
-            array_fill(0, \count($playerThrows), false),
-            array_fill(0, \count($opponentThrows), false),
-            $leaderIsPlayer,
-            null,
-            false,
-            false,
-            false,
-            false,
-            [],
-        );
+        $state = $this->buildInitialState($playerThrows, $opponentThrows);
 
         // If the bot leads first, its move (and any immediately-following
         // bot-solo exchanges, in the degenerate all-bot-bits case) must be
@@ -94,6 +73,49 @@ final class InteractiveExchangeEngine
     }
 
     /**
+     * PvP-only entry point (docs/COMBAT_V2_DESIGN.md §7): both sides are
+     * real players, so — unlike startRound() — nobody auto-plays here even
+     * if the coin flip favors the opponent. Just determines who leads first.
+     *
+     * @param BitThrow[] $playerThrows
+     * @param BitThrow[] $opponentThrows
+     */
+    public function startPvpRound(array $playerThrows, array $opponentThrows): ExchangeRoundState
+    {
+        return $this->buildInitialState($playerThrows, $opponentThrows);
+    }
+
+    /**
+     * @param BitThrow[] $playerThrows
+     * @param BitThrow[] $opponentThrows
+     */
+    private function buildInitialState(array $playerThrows, array $opponentThrows): ExchangeRoundState
+    {
+        $playerThrows = array_values($playerThrows);
+        $opponentThrows = array_values($opponentThrows);
+
+        $playerAdvantage = \count(array_filter($playerThrows, static fn (BitThrow $t) => $t->thrownAdvantage));
+        $opponentAdvantage = \count(array_filter($opponentThrows, static fn (BitThrow $t) => $t->thrownAdvantage));
+        $leaderIsPlayer = $playerAdvantage === $opponentAdvantage
+            ? ($this->randomBool)()
+            : $playerAdvantage > $opponentAdvantage;
+
+        return new ExchangeRoundState(
+            $playerThrows,
+            $opponentThrows,
+            array_fill(0, \count($playerThrows), false),
+            array_fill(0, \count($opponentThrows), false),
+            $leaderIsPlayer,
+            null,
+            false,
+            false,
+            false,
+            false,
+            [],
+        );
+    }
+
+    /**
      * Only meaningful once the caller has driven autoAdvance() to a null
      * exchange (see the class docblock) — until then, the bot may still
      * have an unplayed lead move pending, which this can't distinguish
@@ -108,6 +130,129 @@ final class InteractiveExchangeEngine
         }
 
         return null !== $state->pendingLeaderMove ? 'respond' : 'lead';
+    }
+
+    /**
+     * PvP-only (docs/COMBAT_V2_DESIGN.md §7): unlike currentTurn() (always
+     * implicitly "the player"'s status, meaningful only after auto-advancing
+     * past any bot turns), this reports *this specific side's* status
+     * directly — 'wait' when the other real side currently owns the
+     * decision. Safe to call at any time; doesn't assume either side has
+     * already acted.
+     *
+     * @return 'lead'|'respond'|'wait'|'over'
+     */
+    public function turnForSide(ExchangeRoundState $state, bool $isPlayerSide): string
+    {
+        if ($state->isOver()) {
+            return 'over';
+        }
+
+        if (null !== $state->pendingLeaderMove) {
+            $responderIsPlayer = !$state->leaderIsPlayer;
+
+            return $isPlayerSide === $responderIsPlayer ? 'respond' : 'wait';
+        }
+
+        return $isPlayerSide === $this->effectiveLeaderIsPlayer($state) ? 'lead' : 'wait';
+    }
+
+    /**
+     * $state->leaderIsPlayer can point at a side that's since run out of
+     * bits (e.g. after the other side spent its last few on a lead move) —
+     * this is the side that must *actually* lead next, rerouting to
+     * whoever still has bits (docs/COMBAT_V2_DESIGN.md §3's "continue
+     * solo" rule). Mirrors the reroute check at the top of autoAdvance(),
+     * but as a pure read — callers that actually commit to this leader
+     * (submitPvpLead()) still need to persist it onto $state themselves.
+     */
+    private function effectiveLeaderIsPlayer(ExchangeRoundState $state): bool
+    {
+        return $state->remainingCount($state->leaderIsPlayer) > 0
+            ? $state->leaderIsPlayer
+            : !$state->leaderIsPlayer;
+    }
+
+    /**
+     * PvP-only: the given side leads with the given bits. Unlike
+     * submitLead() (PvE, where the bot's response is computed synchronously
+     * in the same call), this only commits the lead move and pauses —
+     * the actual second player must call submitPvpRespond() separately.
+     *
+     * @param int[] $indices
+     */
+    public function submitPvpLead(ExchangeRoundState $state, bool $isPlayerSide, array $indices, ?AbilityChoice $ability): ExchangeRoundState
+    {
+        if ('lead' !== $this->turnForSide($state, $isPlayerSide)) {
+            throw new InvalidExchangeMoveException('It is not your turn to lead this exchange.');
+        }
+
+        $state->leaderIsPlayer = $isPlayerSide;
+        $face = $this->validateAndConsumeMove($state, $isPlayerSide, $indices);
+        $count = \count($indices);
+        $bonus = BitFace::Action === $face
+            ? $this->applyActionAbility($state, $isPlayerSide, $count, $ability ?? AbilityChoice::flip())
+            : 0;
+
+        $state->pendingLeaderMove = ['face' => $face->value, 'count' => $count, 'bonus' => $bonus];
+
+        return $state;
+    }
+
+    /**
+     * PvP-only: the given side declines to lead this exchange (e.g. its
+     * move-deadline expired — see BattleService) — initiative passes to
+     * the other side without consuming any bits or resolving anything.
+     */
+    public function passPvpLead(ExchangeRoundState $state, bool $isPlayerSide): ExchangeRoundState
+    {
+        if ('lead' !== $this->turnForSide($state, $isPlayerSide)) {
+            throw new InvalidExchangeMoveException('It is not your turn to lead this exchange.');
+        }
+
+        $state->leaderIsPlayer = !$isPlayerSide;
+
+        return $state;
+    }
+
+    /**
+     * PvP-only: the given side responds to the other side's already-pending
+     * lead move (or passes, with an empty $indices — full damage from the
+     * incoming move, per docs/COMBAT_V2_DESIGN.md §4).
+     *
+     * @param int[] $indices
+     *
+     * @return array{state: ExchangeRoundState, exchange: array}
+     */
+    public function submitPvpRespond(ExchangeRoundState $state, bool $isPlayerSide, array $indices, ?AbilityChoice $ability): array
+    {
+        if ('respond' !== $this->turnForSide($state, $isPlayerSide)) {
+            throw new InvalidExchangeMoveException('You are not being asked to respond right now.');
+        }
+
+        $leaderMove = $state->pendingLeaderMove;
+        $leaderFace = BitFace::from($leaderMove['face']);
+        $leaderCount = $leaderMove['count'];
+        $leaderBonus = $leaderMove['bonus'];
+
+        $responderFace = null;
+        $responderCount = 0;
+        $responderBonus = 0;
+        if ([] !== $indices) {
+            $responderFace = $this->validateAndConsumeMove($state, $isPlayerSide, $indices);
+            $responderCount = \count($indices);
+            if (BitFace::Action === $responderFace) {
+                $responderBonus = $this->applyActionAbility($state, $isPlayerSide, $responderCount, $ability ?? AbilityChoice::flip());
+            }
+        }
+
+        $responderMove = null === $responderFace ? null : ['face' => $responderFace, 'count' => $responderCount];
+        $leaderIsPlayerForExchange = !$isPlayerSide;
+        $exchange = $this->resolveExchange($state, $leaderIsPlayerForExchange, $leaderFace, $leaderCount, $leaderBonus, $responderMove, $responderBonus);
+        $state->pendingLeaderMove = null;
+        $state->leaderIsPlayer = $isPlayerSide;
+
+        return ['state' => $state, 'exchange' => $exchange];
     }
 
     /**

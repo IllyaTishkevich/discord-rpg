@@ -20,11 +20,18 @@ export interface BattleState {
   youReady?: boolean;
   opponentReady?: boolean;
   opponentAccepted?: boolean;
-  youSubmitted?: boolean;
-  opponentSubmitted?: boolean;
+  // PvP only, from GET /battles/{id} — a fresh snapshot of the pending
+  // exchange (if any), so a polling client can see faces/used/turn update
+  // as the other duelist acts, without a throw of its own. Always present
+  // (possibly null) on a PvP BattleState; absent for PvE/event.
+  exchange?: ThrowResult | null;
 }
 
-export type ExchangeTurn = "lead" | "respond";
+// "wait" (PvP only): the other real duelist currently owns this decision —
+// see BattleService::submitPvpExchangeMove() on the backend. "over" never
+// actually appears in a response body (the server 409s instead) but is
+// included for completeness with the backend's own type.
+export type ExchangeTurn = "lead" | "respond" | "wait" | "over";
 
 export interface IncomingMove {
   face: BitFace;
@@ -35,7 +42,8 @@ export interface ThrowResult {
   playerFaces: BitFace[];
   opponentFaces: BitFace[];
   playerActionCount: number;
-  // PvE/event interactive flow only (docs/COMBAT_V2_DESIGN.md §7-8) — null for PvP.
+  // Interactive exchange flow (docs/COMBAT_V2_DESIGN.md §7-8) — populated
+  // for PvE/event and PvP alike.
   turn: ExchangeTurn | null;
   incomingMove: IncomingMove | null;
   playerUsed: boolean[] | null;
@@ -58,22 +66,18 @@ export interface RoundResult {
   opponentFaces: BitFace[];
   damageToOpponent: number;
   damageToPlayer: number;
-  // Step-by-step log from the combat v2 exchange engine (PvE/event) — empty
-  // for PvP, which still resolves the whole round in one simultaneous tally.
+  // Step-by-step log from the combat v2 exchange engine — populated for
+  // every mode now, including PvP.
   exchanges: Exchange[];
 }
 
-export interface SubmitActionsResponse {
-  waitingForOpponent?: true;
-  round?: RoundResult;
-  battle?: BattleState;
-}
-
 /**
- * Response from POST /battles/{id}/exchanges/move — the interactive
- * PvE/event flow (docs/COMBAT_V2_DESIGN.md §7-8). `newExchanges` holds only
- * what was resolved by *this* call (it can be more than one — the bot may
- * play several solo exchanges in a row once the player's hand is spent).
+ * Response from POST /battles/{id}/exchanges/move — the interactive flow
+ * (docs/COMBAT_V2_DESIGN.md §7-8), for PvE/event and PvP alike.
+ * `newExchanges` holds only what was resolved by *this* call: for PvE/event
+ * it can be more than one (the bot may play several solo exchanges in a row
+ * once the player's hand is spent); for PvP it's always at most one (the
+ * other duelist's move comes back through a separate call of their own).
  */
 export interface ExchangeMoveResponse {
   roundComplete: boolean;

@@ -93,8 +93,21 @@ final class ExchangeRoundState
         return $count;
     }
 
+    /**
+     * True only once every bit is spent *and* there's no lead move still
+     * awaiting a response. The pendingLeaderMove check never changes
+     * anything for PvE/event (the bot always resolves a pending lead
+     * synchronously before anyone could observe isOver() in between, or
+     * only leaves one pending when the responder still has bits left to
+     * use, per autoAdvance()'s own remainingCount(true) > 0 guard) — but it
+     * matters for PvP, where a lead move can be committed and then sit
+     * waiting on a separate request from the real responder, even if that
+     * lead move happened to exhaust both sides' bit counts.
+     */
     public function isOver(): bool
     {
-        return 0 === $this->remainingCount(true) && 0 === $this->remainingCount(false);
+        return null === $this->pendingLeaderMove
+            && 0 === $this->remainingCount(true)
+            && 0 === $this->remainingCount(false);
     }
 }

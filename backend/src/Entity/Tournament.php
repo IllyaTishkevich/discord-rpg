@@ -9,10 +9,11 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * A single-elimination bracket. There is no live PvP battle engine yet
- * (see Battle/CombatResolver), so matches are simulated server-side from
- * both characters' stats/bits the moment the bracket starts — the whole
- * tournament resolves in one step, not match-by-match over time.
+ * A single-elimination bracket. Matches aren't live duels — they're
+ * simulated server-side from both characters' stats/bits (via
+ * ExchangeResolver, same engine as PvE/event bot auto-play) the moment the
+ * bracket starts, so the whole tournament resolves in one step, not
+ * match-by-match over time.
  */
 #[ORM\Entity(repositoryClass: TournamentRepository::class)]
 class Tournament

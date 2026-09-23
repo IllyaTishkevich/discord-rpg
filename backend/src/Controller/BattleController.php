@@ -60,12 +60,23 @@ class BattleController extends AbstractApiController
     }
 
     #[Route('/{id}', name: 'battle_show', methods: ['GET'])]
-    public function show(Battle $battle): JsonResponse
+    public function show(Battle $battle, BattleService $battleService): JsonResponse
     {
         $viewerIsOpponentSide = $this->requireParticipantSide($battle);
 
         if ($battle->isPvp()) {
-            return $this->json($this->serializer->battleForViewer($battle, $viewerIsOpponentSide));
+            // Lazily applies the move-timeout check — see
+            // BattleService::syncPvpExchangeState()'s docblock — so a
+            // polling opponent sees progress even if the other side never
+            // sends another request of their own.
+            $battleService->syncPvpExchangeState($battle);
+
+            return $this->json([
+                ...$this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
+                'exchange' => $battle->hasPendingThrow()
+                    ? $this->serializer->throwResultForViewer($battleService->currentThrowResult($battle), $viewerIsOpponentSide)
+                    : null,
+            ]);
         }
 
         return $this->json($this->serializer->battle($battle));
@@ -132,19 +143,20 @@ class BattleController extends AbstractApiController
     }
 
     /**
-     * PvE/event only, interactive step-by-step flow
-     * (docs/COMBAT_V2_DESIGN.md §7-8). Submits one lead-or-respond
-     * decision — the server infers which from the battle's own pending
-     * state, never trusting the client's idea of whose turn it is. Body:
+     * Interactive step-by-step flow (docs/COMBAT_V2_DESIGN.md §7-8), for
+     * PvE/event and PvP alike. Submits one lead-or-respond decision — the
+     * server infers which from the battle's own pending state, never
+     * trusting the client's idea of whose turn it is. Body:
      * `{indices: number[], ability?: string, targets?: number[]}`; an
-     * empty `indices` means "pass" and is only valid when responding to
-     * an incoming attack. PvP still goes through /submit-actions instead,
-     * since that protocol hasn't been ported to this engine yet.
+     * empty `indices` means "pass" and is only valid when responding to an
+     * incoming attack (or, PvP-only, declining to lead — see
+     * BattleService::submitPvpExchangeMove()).
      */
     #[Route('/{id}/exchanges/move', name: 'battle_submit_exchange_move', methods: ['POST'])]
     public function submitExchangeMove(Battle $battle, Request $request, BattleService $battleService): JsonResponse
     {
-        $this->requireParticipantSide($battle);
+        $viewerIsOpponentSide = $this->requireParticipantSide($battle);
+        $viewer = $viewerIsOpponentSide ? $battle->getOpponentCharacter() : $battle->getCharacter();
 
         $body = $this->decodeJson($request);
         $indices = $body['indices'] ?? [];
@@ -159,7 +171,7 @@ class BattleController extends AbstractApiController
         }
 
         try {
-            $result = $battleService->submitExchangeMove($battle, $indices, $choice);
+            $result = $battleService->submitExchangeMove($battle, $viewer, $indices, $choice);
         } catch (NoPendingThrowException) {
             return $this->json(['error' => 'Call /throw before submitting a move.'], 409);
         } catch (InvalidExchangeMoveException $e) {
@@ -168,65 +180,43 @@ class BattleController extends AbstractApiController
             return $this->json(['error' => $e->getMessage()], 409);
         }
 
-        if ($result->roundComplete) {
+        if (!$battle->isPvp()) {
+            if ($result->roundComplete) {
+                return $this->json([
+                    'roundComplete' => true,
+                    'newExchanges' => $result->newExchanges,
+                    'playerFaces' => $result->playerFaces,
+                    'opponentFaces' => $result->opponentFaces,
+                    'playerUsed' => $result->playerUsed,
+                    'opponentUsed' => $result->opponentUsed,
+                    'round' => $this->serializer->round($result->round),
+                    'battle' => $this->serializer->battle($battle),
+                ]);
+            }
+
             return $this->json([
-                'roundComplete' => true,
+                'roundComplete' => false,
                 'newExchanges' => $result->newExchanges,
                 'playerFaces' => $result->playerFaces,
                 'opponentFaces' => $result->opponentFaces,
                 'playerUsed' => $result->playerUsed,
                 'opponentUsed' => $result->opponentUsed,
-                'round' => $this->serializer->round($result->round),
+                'turn' => $result->turn,
+                'incomingMove' => $result->incomingMove,
                 'battle' => $this->serializer->battle($battle),
             ]);
         }
 
-        return $this->json([
-            'roundComplete' => false,
-            'newExchanges' => $result->newExchanges,
-            'playerFaces' => $result->playerFaces,
-            'opponentFaces' => $result->opponentFaces,
-            'playerUsed' => $result->playerUsed,
-            'opponentUsed' => $result->opponentUsed,
-            'turn' => $result->turn,
-            'incomingMove' => $result->incomingMove,
-            'battle' => $this->serializer->battle($battle),
-        ]);
-    }
-
-    /**
-     * PvP only: submit your action-flip targets for the current round. The
-     * round only resolves once both sides have submitted — until then this
-     * returns `{waitingForOpponent: true}` and the client should keep
-     * polling GET /{id} for `opponentSubmitted`.
-     */
-    #[Route('/{id}/submit-actions', name: 'battle_submit_actions', methods: ['POST'])]
-    public function submitActions(Battle $battle, Request $request, BattleService $battleService): JsonResponse
-    {
-        $viewerIsOpponentSide = $this->requireParticipantSide($battle);
-        $viewerCharacter = $viewerIsOpponentSide ? $battle->getOpponentCharacter() : $battle->getCharacter();
-
-        $choice = $this->decodeAbilityChoice($request);
-        if (null === $choice) {
-            return $this->json(['error' => 'Invalid "ability" — must be one of: '.implode(', ', array_column(AbilityType::cases(), 'value'))], 400);
-        }
-
-        try {
-            $round = $battleService->submitActions($battle, $viewerCharacter, $choice);
-        } catch (NoPendingThrowException) {
-            return $this->json(['error' => 'Call /throw before /submit-actions.'], 409);
-        } catch (AbilityNotAvailableException|InsufficientActionPointsException $e) {
-            return $this->json(['error' => $e->getMessage()], 409);
-        } catch (InvalidBattleStateException|BattleAlreadyFinishedException $e) {
-            return $this->json(['error' => $e->getMessage()], 409);
-        }
-
-        if (null === $round) {
-            return $this->json(['waitingForOpponent' => true]);
+        if ($result->roundComplete) {
+            return $this->json([
+                ...$this->serializer->exchangeMoveResultForViewer($result, $viewerIsOpponentSide),
+                'round' => $this->serializer->roundForViewer($result->round, $viewerIsOpponentSide),
+                'battle' => $this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
+            ]);
         }
 
         return $this->json([
-            'round' => $this->serializer->roundForViewer($round, $viewerIsOpponentSide),
+            ...$this->serializer->exchangeMoveResultForViewer($result, $viewerIsOpponentSide),
             'battle' => $this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
         ]);
     }

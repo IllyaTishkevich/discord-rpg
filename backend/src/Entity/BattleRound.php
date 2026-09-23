@@ -7,11 +7,12 @@ use Doctrine\ORM\Mapping as ORM;
 
 /**
  * Log entry for a single resolved round: the final (post-action) face lists
- * for both sides, the resulting damage, and — for battles resolved via the
- * combat v2 exchange engine (docs/COMBAT_V2_DESIGN.md) — the step-by-step
- * exchange log, so the Activity can show the player what actually happened
- * instead of just the final tally. Empty for PvP, which still uses the
- * older single-tally CombatResolver (see BattleService::resolveRoundLegacy()).
+ * for both sides, the resulting damage, and the step-by-step exchange log
+ * (combat v2, docs/COMBAT_V2_DESIGN.md) — every mode including PvP produces
+ * this now, whether played out incrementally (the interactive Arena) or all
+ * at once (BattleService::resolveRound(), bot text commands) — so the
+ * Activity can show the player what actually happened instead of just the
+ * final tally.
  */
 #[ORM\Entity(repositoryClass: BattleRoundRepository::class)]
 class BattleRound

@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
-import { submitExchangeMove, throwRound } from "../api/battles";
+import { fetchBattle, fetchLatestRound, submitExchangeMove, throwRound } from "../api/battles";
 import { BitCoin, FACE_LABEL } from "../components/BitCoin";
 import { StatBar } from "../components/StatBar";
-import { PvpArenaScreen } from "./PvpArenaScreen";
-import type { AbilityChoice, AbilityType, BattleState, Exchange, IncomingMove, RoundResult } from "../types/battle";
+import type { AbilityChoice, AbilityType, BattleState, Exchange, ExchangeTurn, IncomingMove, RoundResult } from "../types/battle";
 import type { BitFace, Character } from "../types/character";
 import "./ArenaScreen.css";
+
+// How often to poll GET /battles/{id} while it's the other real duelist's
+// turn (PvE/event never reaches this — the bot always resolves synchronously
+// in the same request as the player's own move).
+const PVP_POLL_INTERVAL_MS = 2000;
 
 type Phase = "loading" | "playing" | "resolved";
 
@@ -60,29 +64,22 @@ interface Props {
 }
 
 /**
- * PvE/event only — a real turn-by-turn exchange sequence (see
- * docs/COMBAT_V2_DESIGN.md §7-8): after a throw, whoever has priority
- * leads with one or more same-face bits, the bot responds automatically,
- * damage applies immediately, and the lead alternates until both hands are
- * spent. PvP still uses the older one-shot simultaneous flow — see
- * PvpArenaScreen.
+ * A real turn-by-turn exchange sequence (docs/COMBAT_V2_DESIGN.md §7-8),
+ * for PvE/event and PvP alike: after a throw, whoever has priority leads
+ * with one or more same-face bits, the other side responds, damage applies
+ * immediately, and the lead alternates until both hands are spent. For
+ * PvE/event the bot responds synchronously in the same request; for PvP the
+ * other real duelist acts via their own separate request, so this screen
+ * polls while `turn === "wait"` to pick up their move.
  */
 export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
-  if (initialBattle.mode === "pvp") {
-    return <PvpArenaScreen initialBattle={initialBattle} character={character} onFinished={onFinished} />;
-  }
-
-  return <InteractiveArenaScreen initialBattle={initialBattle} character={character} onFinished={onFinished} />;
-}
-
-function InteractiveArenaScreen({ initialBattle, character, onFinished }: Props) {
   const [battle, setBattle] = useState(initialBattle);
   const [phase, setPhase] = useState<Phase>("loading");
   const [playerFaces, setPlayerFaces] = useState<BitFace[]>([]);
   const [opponentFaces, setOpponentFaces] = useState<BitFace[]>([]);
   const [playerUsed, setPlayerUsed] = useState<boolean[]>([]);
   const [opponentUsed, setOpponentUsed] = useState<boolean[]>([]);
-  const [turn, setTurn] = useState<"lead" | "respond" | null>(null);
+  const [turn, setTurn] = useState<ExchangeTurn | null>(null);
   const [incomingMove, setIncomingMove] = useState<IncomingMove | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [pendingAbilityChoice, setPendingAbilityChoice] = useState(false);
@@ -140,6 +137,10 @@ function InteractiveArenaScreen({ initialBattle, character, onFinished }: Props)
       setFlipTargets([]);
 
       if (response.roundComplete && response.round) {
+        // Authoritative — covers PvP, where some of this round's exchanges
+        // may have come from the other duelist's own moves this client
+        // never directly saw (only picked up via polling).
+        setExchangeLog(response.round.exchanges);
         setLastRound(response.round);
         setPhase("resolved");
       } else {
@@ -152,6 +153,44 @@ function InteractiveArenaScreen({ initialBattle, character, onFinished }: Props)
       setBusy(false);
     }
   }
+
+  // PvP only: while it's the other duelist's turn, poll for their move —
+  // PvE/event never sets turn to "wait" (the bot always resolves inline).
+  useEffect(() => {
+    if (battle.mode !== "pvp" || turn !== "wait" || phase !== "playing") {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const updated = await fetchBattle(battle.id);
+        setBattle(updated);
+
+        if (updated.exchange) {
+          setPlayerFaces(updated.exchange.playerFaces);
+          setOpponentFaces(updated.exchange.opponentFaces);
+          setPlayerUsed(updated.exchange.playerUsed ?? []);
+          setOpponentUsed(updated.exchange.opponentUsed ?? []);
+          setTurn(updated.exchange.turn);
+          setIncomingMove(updated.exchange.incomingMove);
+          return;
+        }
+
+        // No pending exchange left — the other duelist's move just
+        // finished the round (or knocked someone out mid-exchange).
+        const round = await fetchLatestRound(battle.id);
+        if (round) {
+          setExchangeLog(round.exchanges);
+          setLastRound(round);
+        }
+        setPhase("resolved");
+      } catch {
+        // Transient poll failure — try again next tick.
+      }
+    }, PVP_POLL_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [battle.mode, battle.id, turn, phase]);
 
   function toggleOwnBit(index: number) {
     if (pendingAbilityChoice || playerUsed[index]) return;
@@ -239,7 +278,7 @@ function InteractiveArenaScreen({ initialBattle, character, onFinished }: Props)
                   key={index}
                   face={face}
                   used={playerUsed[index]}
-                  selectable={!pendingAbilityChoice && !playerUsed[index]}
+                  selectable={turn !== "wait" && !pendingAbilityChoice && !playerUsed[index]}
                   selected={selectedIndices.includes(index)}
                   onClick={() => toggleOwnBit(index)}
                 />
@@ -247,6 +286,7 @@ function InteractiveArenaScreen({ initialBattle, character, onFinished }: Props)
             </div>
           </div>
 
+          {turn === "wait" && <p className="arena__hint">Ждём ход соперника...</p>}
           {turn === "respond" && incomingMove && !pendingAbilityChoice && (
             <p className="arena__hint arena__hint--selected">
               Соперник разыграл: <strong>{FACE_LABEL[incomingMove.face]} ×{incomingMove.count}</strong>. Выбери, чем ответить, или пропусти.
@@ -254,7 +294,7 @@ function InteractiveArenaScreen({ initialBattle, character, onFinished }: Props)
           )}
           {turn === "lead" && !pendingAbilityChoice && <p className="arena__hint">Твой ход — выбери одну или несколько одинаковых бит.</p>}
 
-          {!pendingAbilityChoice && (
+          {turn !== "wait" && !pendingAbilityChoice && (
             <div className="arena__move-actions">
               {turn === "respond" && (
                 <button className="arena__action arena__action--secondary" disabled={busy} onClick={() => void sendMove([])}>

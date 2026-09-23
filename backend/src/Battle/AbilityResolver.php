@@ -7,12 +7,16 @@ use App\Enum\BitFace;
 use App\Exception\InsufficientActionPointsException;
 
 /**
- * Applies the effect of a chosen combat ability around CombatResolver,
- * which still owns the core attack-vs-defense tally and stays completely
- * unaware abilities exist — Flip is CombatResolver's only behavior, so a
- * Flip choice passes straight through unchanged. The other three abilities
- * are handled here: Reroll transforms the throw *before* CombatResolver
- * runs, UnblockableDamage/DamageMirror adjust its result *after*.
+ * Applies the effect of a chosen combat ability. `assertAffordable()` and
+ * `countActionFaces()` are still used by the non-interactive whole-round
+ * path (BattleService::resolveRound(), via ExchangeResolver). The other
+ * three methods (applyPreDamage/effectiveFlipTargets/applyPostDamage) were
+ * written for the old simultaneous-reveal CombatResolver — Reroll transformed
+ * the throw *before* it ran, UnblockableDamage/DamageMirror adjusted its
+ * result *after* — and are unused now that CombatResolver/PvP's old
+ * whole-round flow are gone (docs/COMBAT_V2_DESIGN.md §7); kept because
+ * they're still correct standalone logic with their own test coverage
+ * (AbilityResolverTest), not because anything currently calls them.
  *
  * See docs/BATTLE_RULES.md for the rules and docs/BATTLE_ROOM_DESIGN.md's
  * successor discussion for why abilities are "pick one, spend everything
@@ -48,8 +52,8 @@ final class AbilityResolver
     }
 
     /**
-     * @return int[] indices to feed into CombatResolver's flip mechanism —
-     *               empty unless the chosen ability is actually Flip
+     * @return int[] flip target indices — empty unless the chosen ability
+     *               is actually Flip
      */
     public function effectiveFlipTargets(AbilityChoice $choice): array
     {
