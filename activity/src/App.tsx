@@ -13,7 +13,7 @@ import { ProfileScreen } from "./screens/ProfileScreen";
 import { ShopScreen } from "./screens/ShopScreen";
 import { TournamentScreen } from "./screens/TournamentScreen";
 import { WeeklyQuestScreen } from "./screens/WeeklyQuestScreen";
-import type { BattleState } from "./types/battle";
+import type { BattleState, RoundResult } from "./types/battle";
 import type { Character } from "./types/character";
 import type { ActiveEvent } from "./types/event";
 
@@ -28,7 +28,7 @@ type LoadState =
   | { status: "quest"; character: Character }
   | { status: "duel-lobby"; character: Character; battle: BattleState }
   | { status: "arena"; character: Character; battle: BattleState }
-  | { status: "battle-result"; character: Character; battle: BattleState }
+  | { status: "battle-result"; character: Character; battle: BattleState; round: RoundResult | null }
   | { status: "error"; message: string };
 
 // Discord SDK RPC rejections (discordSdk.commands.*) are typically plain
@@ -117,12 +117,12 @@ function App() {
     }
   }
 
-  async function handleBattleFinished(character: Character, battle: BattleState) {
+  async function handleBattleFinished(character: Character, battle: BattleState, round: RoundResult | null) {
     try {
       const freshCharacter = await fetchMyCharacter();
-      setState({ status: "battle-result", character: freshCharacter, battle });
+      setState({ status: "battle-result", character: freshCharacter, battle, round });
     } catch {
-      setState({ status: "battle-result", character, battle });
+      setState({ status: "battle-result", character, battle, round });
     }
   }
 
@@ -157,13 +157,15 @@ function App() {
       <ArenaScreen
         initialBattle={state.battle}
         character={state.character}
-        onFinished={(battle) => handleBattleFinished(state.character, battle)}
+        onFinished={(battle, round) => handleBattleFinished(state.character, battle, round)}
       />
     );
   }
 
   if (state.status === "battle-result") {
-    return <BattleResultScreen battle={state.battle} onContinue={() => setState({ status: "profile", character: state.character })} />;
+    return (
+      <BattleResultScreen battle={state.battle} round={state.round} onContinue={() => setState({ status: "profile", character: state.character })} />
+    );
   }
 
   if (state.status === "shop") {

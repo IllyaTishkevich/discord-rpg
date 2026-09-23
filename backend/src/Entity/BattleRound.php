@@ -49,6 +49,21 @@ class BattleRound
     #[ORM\Column(type: 'json')]
     private array $exchanges;
 
+    /**
+     * Loot rolled this round (LootService::rollDrops(), only ever non-empty
+     * on the round that actually finishes off a PvE monster) — a snapshot
+     * taken at drop time, not a live relation to Item, since the dropped
+     * Item's own name/icon could change later and this should keep showing
+     * what was actually received. Unlike XP/coins (BattleSerializer::rewardsFor(),
+     * recomputed from fixed constants whenever asked), item drops are random
+     * and can't be recomputed after the fact, so they have to be captured
+     * here instead.
+     *
+     * @var array{name: string, iconName: ?string}[]
+     */
+    #[ORM\Column(type: 'json')]
+    private array $droppedItems;
+
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
@@ -56,6 +71,7 @@ class BattleRound
      * @param string[]                                                                                                                                                 $playerFaces
      * @param string[]                                                                                                                                                 $opponentFaces
      * @param array{leaderIsPlayer: bool, leaderFace: string, leaderCount: int, responderFace: ?string, responderCount: int, damageToPlayer: int, damageToOpponent: int}[] $exchanges
+     * @param array{name: string, iconName: ?string}[]                                                                                                                 $droppedItems
      */
     public function __construct(
         Battle $battle,
@@ -65,6 +81,7 @@ class BattleRound
         int $damageToOpponent,
         int $damageToPlayer,
         array $exchanges = [],
+        array $droppedItems = [],
     ) {
         $this->battle = $battle;
         $this->roundNumber = $roundNumber;
@@ -73,6 +90,7 @@ class BattleRound
         $this->damageToOpponent = $damageToOpponent;
         $this->damageToPlayer = $damageToPlayer;
         $this->exchanges = $exchanges;
+        $this->droppedItems = $droppedItems;
         $this->createdAt = new \DateTimeImmutable();
     }
 
@@ -117,6 +135,14 @@ class BattleRound
     public function getExchanges(): array
     {
         return $this->exchanges;
+    }
+
+    /**
+     * @return array{name: string, iconName: ?string}[]
+     */
+    public function getDroppedItems(): array
+    {
+        return $this->droppedItems;
     }
 
     public function getCreatedAt(): \DateTimeImmutable

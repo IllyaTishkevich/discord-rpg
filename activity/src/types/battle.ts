@@ -76,6 +76,11 @@ export interface Exchange {
   damageToOpponent: number;
 }
 
+export interface DroppedItem {
+  name: string;
+  iconName: string | null;
+}
+
 export interface RoundResult {
   roundNumber: number;
   playerFaces: BitFace[];
@@ -85,6 +90,9 @@ export interface RoundResult {
   // Step-by-step log from the combat v2 exchange engine — populated for
   // every mode now, including PvP.
   exchanges: Exchange[];
+  // Loot rolled this round (always [] except the round that actually
+  // finishes off a PvE/event monster — PvP never drops anything).
+  itemsDropped: DroppedItem[];
 }
 
 /**

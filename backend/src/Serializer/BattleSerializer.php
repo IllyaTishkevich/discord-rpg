@@ -78,6 +78,7 @@ class BattleSerializer
             'damageToOpponent' => $round->getDamageToOpponent(),
             'damageToPlayer' => $round->getDamageToPlayer(),
             'exchanges' => $round->getExchanges(),
+            'itemsDropped' => $round->getDroppedItems(),
         ];
     }
 
@@ -171,6 +172,10 @@ class BattleSerializer
             'damageToOpponent' => $viewerIsOpponentSide ? $round->getDamageToPlayer() : $round->getDamageToOpponent(),
             'damageToPlayer' => $viewerIsOpponentSide ? $round->getDamageToOpponent() : $round->getDamageToPlayer(),
             'exchanges' => array_map(fn (array $e) => $this->exchangeForViewer($e, $viewerIsOpponentSide), $round->getExchanges()),
+            // Always [] in practice — PvP has no monster to drop loot from
+            // (BattleService::resolveOutcome()) — kept here for shape
+            // consistency with round() above rather than special-cased away.
+            'itemsDropped' => $round->getDroppedItems(),
         ];
     }
 

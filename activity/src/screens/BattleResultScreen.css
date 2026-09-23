@@ -17,6 +17,52 @@
   margin-top: 8px;
 }
 
+.battle-result__loot {
+  margin-top: 16px;
+}
+
+.battle-result__loot-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  opacity: 0.75;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.battle-result__loot-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.battle-result__loot-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  max-width: 72px;
+}
+
+.battle-result__loot-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  border: 2px solid #4e5058;
+  background: #2b2d31;
+  object-fit: cover;
+}
+
+.battle-result__loot-icon--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #949ba4;
+  font-size: 18px;
+  font-weight: 700;
+}
+
 .battle-result__continue {
   margin-top: 20px;
   background: #5865f2;

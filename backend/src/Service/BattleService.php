@@ -16,6 +16,7 @@ use App\Entity\BattleRound;
 use App\Entity\Bit;
 use App\Entity\Character;
 use App\Entity\Event;
+use App\Entity\Item;
 use App\Entity\Monster;
 use App\Enum\BattleMode;
 use App\Enum\BattleStatus;
@@ -686,6 +687,11 @@ class BattleService
         $battle->setPendingExchangeState(null);
         $battle->incrementRoundNumber();
 
+        // Resolved before building BattleRound so its dropped-items snapshot
+        // (see BattleRound::$droppedItems) can be attached at construction
+        // time, same as every other round-outcome field below it.
+        $droppedItems = $this->resolveOutcome($battle);
+
         $round = new BattleRound(
             $battle,
             $battle->getRoundNumber(),
@@ -694,13 +700,22 @@ class BattleService
             array_sum(array_column($state->exchanges, 'damageToOpponent')),
             array_sum(array_column($state->exchanges, 'damageToPlayer')),
             $state->exchanges,
+            $this->serializeDroppedItems($droppedItems),
         );
         $this->entityManager->persist($round);
-
-        $this->resolveOutcome($battle);
         $this->entityManager->flush();
 
         return $round;
+    }
+
+    /**
+     * @param Item[] $items
+     *
+     * @return array{name: string, iconName: ?string}[]
+     */
+    private function serializeDroppedItems(array $items): array
+    {
+        return array_map(static fn (Item $item) => ['name' => $item->getName(), 'iconName' => $item->getIconName()], $items);
     }
 
     /**
@@ -721,6 +736,11 @@ class BattleService
 
         $battle->incrementRoundNumber();
 
+        // Resolved before building BattleRound so its dropped-items snapshot
+        // (see BattleRound::$droppedItems) can be attached at construction
+        // time, same as every other round-outcome field below it.
+        $droppedItems = $this->resolveOutcome($battle);
+
         $round = new BattleRound(
             $battle,
             $battle->getRoundNumber(),
@@ -737,10 +757,9 @@ class BattleService
                 'damageToPlayer' => $e->damageToPlayer,
                 'damageToOpponent' => $e->damageToOpponent,
             ], $result->exchanges),
+            $this->serializeDroppedItems($droppedItems),
         );
         $this->entityManager->persist($round);
-
-        $this->resolveOutcome($battle);
 
         $this->entityManager->flush();
 
@@ -748,12 +767,16 @@ class BattleService
     }
 
 
-    private function resolveOutcome(Battle $battle): void
+    /**
+     * @return Item[] items dropped this round (only ever non-empty for a
+     *                 PvE/event win — PvP has no monster to drop anything)
+     */
+    private function resolveOutcome(Battle $battle): array
     {
         if ($battle->isPvp()) {
             $this->resolvePvpOutcome($battle);
 
-            return;
+            return [];
         }
 
         $character = $battle->getCharacter();
@@ -763,10 +786,14 @@ class BattleService
             $character->addXp($isEvent ? self::EVENT_XP_REWARD : self::XP_REWARD);
             $character->addCoins($isEvent ? self::EVENT_COIN_REWARD : self::COIN_REWARD);
             $this->questService->recordBattleWin($character);
-            $this->lootService->rollDrops($character, $battle->getOpponentMonster());
-        } elseif ($character->getHp() <= 0) {
+
+            return $this->lootService->rollDrops($character, $battle->getOpponentMonster());
+        }
+        if ($character->getHp() <= 0) {
             $battle->setStatus(BattleStatus::Lost);
         }
+
+        return [];
     }
 
     private function resolvePvpOutcome(Battle $battle): void
