@@ -23,17 +23,32 @@ export interface BattleState {
   status: "waiting" | "in_progress" | "won" | "lost" | "abandoned";
   roundNumber: number;
   hasPendingThrow: boolean;
-  opponent: { name: string | null; hp: number | null; maxHp: number | null };
+  // Deadline for whoever currently owes the next lead/respond move — null
+  // when nothing is pending (e.g. between rounds). ISO 8601.
+  roundDeadlineAt: string | null;
+  opponent: {
+    name: string | null;
+    hp: number | null;
+    maxHp: number | null;
+    // PvE/event: the linked catalog Monster's icon (via getIconUrl("monsters", iconName))
+    // and level, or both null (pre-catalog fallback opponent, or an Event).
+    iconName: string | null;
+    level: number | null;
+    // PvP only: the opponent's Discord avatar (ready-to-use URL) and class name.
+    avatarUrl: string | null;
+    className: string | null;
+  };
   character: { hp: number; maxHp: number };
   rewards: { xp: number; coins: number } | null;
   // PvP only:
   youReady?: boolean;
   opponentReady?: boolean;
   opponentAccepted?: boolean;
-  // PvP only, from GET /battles/{id} — a fresh snapshot of the pending
-  // exchange (if any), so a polling client can see faces/used/turn update
-  // as the other duelist acts, without a throw of its own. Always present
-  // (possibly null) on a PvP BattleState; absent for PvE/event.
+  // From GET /battles/{id} — a fresh snapshot of the pending exchange (if
+  // any), so a client can see faces/used/turn update without a throw of its
+  // own: for PvP, picking up the other duelist's move via polling; for
+  // PvE/event, re-syncing after TurnTimer's onExpire triggers the server's
+  // lazy timeout check (see BattleService::syncExchangeState()).
   exchange?: ThrowResult | null;
 }
 
@@ -62,6 +77,17 @@ export interface ThrowResult {
   incomingMove: IncomingMove | null;
   playerUsed: boolean[] | null;
   opponentUsed: boolean[] | null;
+}
+
+/**
+ * Response from POST /battles/{id}/throw specifically — same shape as
+ * ThrowResult, plus a fresh BattleState snapshot (so the client picks up
+ * the just-set roundDeadlineAt). Not part of ThrowResult itself: that type
+ * is reused as-is for BattleState.exchange's shape (the PvP polling
+ * snapshot), which does *not* carry a nested `battle`.
+ */
+export interface ThrowRoundResponse extends ThrowResult {
+  battle: BattleState;
 }
 
 export interface Exchange {

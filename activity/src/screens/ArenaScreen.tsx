@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { fetchAbilities } from "../api/abilities";
 import { fetchBattle, fetchLatestRound, submitExchangeMove, throwRound } from "../api/battles";
 import { BitCoin, FACE_LABEL } from "../components/BitCoin";
-import { StatBar } from "../components/StatBar";
+import { CombatantBar } from "../components/CombatantBar";
+import { TurnTimer } from "../components/TurnTimer";
 import type { AbilityChoice, AbilityType, BattleState, Exchange, ExchangeTurn, IncomingMove, RoundResult } from "../types/battle";
 import type { BitFace, Character } from "../types/character";
 import "./ArenaScreen.css";
@@ -60,6 +61,22 @@ function describeExchange(exchange: Exchange): string {
   return `${leaderLabel}: ${leaderMove} → ${responderLabel}: ${responderMove} — ${damageText}`;
 }
 
+// One side's most recently played move, for the center-stage circles —
+// derived from the round's last resolved exchange. null when that side
+// didn't play into it (e.g. the responder passed).
+interface StageMove {
+  face: BitFace;
+  count: number;
+}
+
+function stageMoveFor(exchange: Exchange | undefined, wantPlayerSide: boolean): StageMove | null {
+  if (!exchange) return null;
+  if (exchange.leaderIsPlayer === wantPlayerSide) {
+    return { face: exchange.leaderFace, count: exchange.leaderCount };
+  }
+  return exchange.responderFace ? { face: exchange.responderFace, count: exchange.responderCount } : null;
+}
+
 interface Props {
   initialBattle: BattleState;
   character: Character;
@@ -113,6 +130,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     setError(null);
     try {
       const result = await throwRound(battle.id);
+      setBattle(result.battle);
       setPlayerFaces(result.playerFaces);
       setOpponentFaces(result.opponentFaces);
       setPlayerUsed(result.playerUsed ?? result.playerFaces.map(() => false));
@@ -215,6 +233,46 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     return () => clearInterval(interval);
   }, [battle.mode, battle.id, turn, phase]);
 
+  // Fires once the per-move deadline (battle.roundDeadlineAt) reaches zero,
+  // for PvE/event and PvP alike. Never resubmits the stale local selection
+  // as a move of its own — that risks the server having already auto-passed
+  // this exact decision server-side (see BattleService::applyMoveTimeoutIfExpired())
+  // and moved on to a different one by the time our request arrives. Instead
+  // it just re-syncs via a plain GET, the same safe, side-effect-only path
+  // the PvP poll above already uses to pick up someone else's move.
+  async function handleTimeout() {
+    if (busy || phase !== "playing") return;
+    try {
+      const updated = await fetchBattle(battle.id);
+      setBattle(updated);
+
+      if (updated.exchange) {
+        setPlayerFaces(updated.exchange.playerFaces);
+        setOpponentFaces(updated.exchange.opponentFaces);
+        setPlayerUsed(updated.exchange.playerUsed ?? []);
+        setOpponentUsed(updated.exchange.opponentUsed ?? []);
+        setPlayerMultipliers(updated.exchange.playerMultipliers);
+        setOpponentMultipliers(updated.exchange.opponentMultipliers);
+        setTurn(updated.exchange.turn);
+        setIncomingMove(updated.exchange.incomingMove);
+        setSelectedIndices([]);
+        setPendingAbilityChoice(false);
+        setFlipTargets([]);
+        return;
+      }
+
+      const round = await fetchLatestRound(battle.id);
+      if (round) {
+        setExchangeLog(round.exchanges);
+        setLastRound(round);
+      }
+      setPhase("resolved");
+    } catch {
+      // Transient failure — the timer will have already hit 0; the next
+      // request the player makes (or the next PvP poll tick) recovers.
+    }
+  }
+
   function toggleOwnBit(index: number) {
     if (pendingAbilityChoice || playerUsed[index]) return;
     // An empty-faced bit never activates — it can't be led or responded
@@ -272,19 +330,29 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     void handleThrow();
   }
 
+  const lastExchange = exchangeLog[exchangeLog.length - 1];
+  const opponentStageMove = stageMoveFor(lastExchange, false);
+  const playerStageMove = stageMoveFor(lastExchange, true);
+
   return (
     <div className="arena">
-      <h1>{battle.opponent.name}</h1>
-
-      <StatBar label="Противник" value={battle.opponent.hp ?? 0} max={battle.opponent.maxHp ?? 0} variant="enemy" />
-      <StatBar label="Ты" value={battle.character.hp} max={battle.character.maxHp} variant="hp" />
+      <CombatantBar
+        name={battle.opponent.name ?? "?"}
+        level={battle.opponent.level}
+        className={battle.opponent.className}
+        hp={battle.opponent.hp ?? 0}
+        maxHp={battle.opponent.maxHp ?? 0}
+        avatarUrl={battle.opponent.avatarUrl}
+        iconName={battle.opponent.iconName}
+        variant="enemy"
+      />
 
       {phase === "loading" && <p className="arena__hint">Бросаем биты...</p>}
 
       {phase === "playing" && (
         <div className="arena__board">
-          <div className="arena__side">
-            <p>Противник</p>
+          <div className="arena__pool arena__pool--opponent">
+            <p className="arena__pool-label">Биты противника</p>
             <div className="arena__coins">
               {opponentFaces.map((face, index) => (
                 <BitCoin
@@ -300,27 +368,40 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
             </div>
           </div>
 
-          <div className="arena__side">
-            <p>Ты</p>
-            <div className="arena__coins">
-              {playerFaces.map((face, index) => (
-                <BitCoin
-                  key={index}
-                  face={face}
-                  used={playerUsed[index]}
-                  multiplier={playerMultipliers[index]}
-                  selectable={
-                    turn !== "wait" &&
-                    !pendingAbilityChoice &&
-                    !playerUsed[index] &&
-                    face !== "empty" &&
-                    (turn !== "respond" || face === "defense")
-                  }
-                  selected={selectedIndices.includes(index)}
-                  onClick={() => toggleOwnBit(index)}
-                />
-              ))}
+          <div className="arena__stage">
+            <div className="arena__stage-logs">
+              <div className="arena__log-panel arena__log-panel--opponent">
+                {opponentFaces.map(
+                  (face, index) =>
+                    opponentUsed[index] && (
+                      <div className="arena__log-coin" key={index}>
+                        <BitCoin face={face} multiplier={opponentMultipliers[index]} used />
+                      </div>
+                    ),
+                )}
+              </div>
+              <div className="arena__log-panel arena__log-panel--player">
+                {playerFaces.map(
+                  (face, index) =>
+                    playerUsed[index] && (
+                      <div className="arena__log-coin" key={index}>
+                        <BitCoin face={face} multiplier={playerMultipliers[index]} used />
+                      </div>
+                    ),
+                )}
+              </div>
             </div>
+
+            <div className="arena__stage-circles">
+              <div className="arena__stage-circle arena__stage-circle--opponent">
+                {opponentStageMove && <BitCoin key={exchangeLog.length} face={opponentStageMove.face} multiplier={opponentStageMove.count} />}
+              </div>
+              <div className="arena__stage-circle arena__stage-circle--player">
+                {playerStageMove && <BitCoin key={exchangeLog.length} face={playerStageMove.face} multiplier={playerStageMove.count} />}
+              </div>
+            </div>
+
+            <TurnTimer deadline={battle.roundDeadlineAt} onExpire={() => void handleTimeout()} />
           </div>
 
           {turn === "wait" && <p className="arena__hint">Ждём ход соперника...</p>}
@@ -331,65 +412,89 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
           )}
           {turn === "lead" && !pendingAbilityChoice && <p className="arena__hint">Твой ход — выбери одну или несколько одинаковых бит.</p>}
 
-          {turn !== "wait" && !pendingAbilityChoice && (
-            <div className="arena__move-actions">
-              {turn === "respond" && (
-                <button className="arena__action arena__action--secondary" disabled={busy} onClick={() => void sendMove([])}>
-                  Не отвечать
-                </button>
-              )}
-              <button className="arena__action" disabled={busy || selectedIndices.length === 0} onClick={handleConfirmSelection}>
-                Подтвердить{selectedIndices.length > 0 ? ` (${selectedIndices.length})` : ""}
-              </button>
-            </div>
-          )}
+          <div className="arena__pool arena__pool--player">
+            {!pendingAbilityChoice && (
+              <div className="arena__coins">
+                {playerFaces.map((face, index) => (
+                  <BitCoin
+                    key={index}
+                    face={face}
+                    used={playerUsed[index]}
+                    multiplier={playerMultipliers[index]}
+                    selectable={
+                      turn !== "wait" &&
+                      !pendingAbilityChoice &&
+                      !playerUsed[index] &&
+                      face !== "empty" &&
+                      (turn !== "respond" || face === "defense")
+                    }
+                    selected={selectedIndices.includes(index)}
+                    onClick={() => toggleOwnBit(index)}
+                  />
+                ))}
+              </div>
+            )}
 
-          {pendingAbilityChoice && (
-            <div className="arena__abilities">
-              <p className="arena__hint">Разыгрывается действие ×{selectedIndices.length}. Выбери способность:</p>
-              <div className="arena__ability-list">
-                {availableAbilityOptions.length === 0 && (
-                  <p className="arena__hint">Нет доступных способностей — можно только сходить обычным ударом или защитой.</p>
-                )}
-                {availableAbilityOptions.map((option) => {
-                  const affordable = isAffordable(option, selectedIndices.length);
-                  const isSelected = selectedAbility === option.type;
-                  return (
-                    <button
-                      key={option.type}
-                      className={`arena__ability${isSelected ? " arena__ability--selected" : ""}`}
-                      disabled={!affordable}
-                      onClick={() => {
-                        setSelectedAbility(option.type);
-                        setFlipTargets([]);
-                      }}
-                    >
-                      <span className="arena__ability-top">
-                        <span className="arena__ability-check" aria-hidden="true">
-                          {isSelected ? "✓" : ""}
+            {pendingAbilityChoice && (
+              <div className="arena__abilities">
+                <p className="arena__hint">Разыгрывается действие ×{selectedIndices.length}. Выбери способность:</p>
+                <div className="arena__ability-list">
+                  {availableAbilityOptions.length === 0 && (
+                    <p className="arena__hint">Нет доступных способностей — можно только сходить обычным ударом или защитой.</p>
+                  )}
+                  {availableAbilityOptions.map((option) => {
+                    const affordable = isAffordable(option, selectedIndices.length);
+                    const isSelected = selectedAbility === option.type;
+                    return (
+                      <button
+                        key={option.type}
+                        className={`arena__ability${isSelected ? " arena__ability--selected" : ""}`}
+                        disabled={!affordable}
+                        onClick={() => {
+                          setSelectedAbility(option.type);
+                          setFlipTargets([]);
+                        }}
+                      >
+                        <span className="arena__ability-top">
+                          <span className="arena__ability-check" aria-hidden="true">
+                            {isSelected ? "✓" : ""}
+                          </span>
+                          <span className="arena__ability-label">{abilityLabels[option.type] ?? option.label}</span>
                         </span>
-                        <span className="arena__ability-label">{abilityLabels[option.type] ?? option.label}</span>
-                      </span>
-                      <span className="arena__ability-desc">{option.description}</span>
-                    </button>
-                  );
-                })}
+                        <span className="arena__ability-desc">{option.description}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedAbility === "flip" && availableAbilityOptions.length > 0 && (
+                  <p className="arena__hint">
+                    Выбери до {selectedIndices.length} бит противника, чтобы перевернуть их ({flipTargets.length}/{selectedIndices.length})
+                  </p>
+                )}
+                <div className="arena__move-actions">
+                  <button className="arena__action arena__action--secondary" disabled={busy} onClick={() => setPendingAbilityChoice(false)}>
+                    Назад
+                  </button>
+                  <button className="arena__action" disabled={busy || availableAbilityOptions.length === 0} onClick={handleSendActionMove}>
+                    Подтвердить способность
+                  </button>
+                </div>
               </div>
-              {selectedAbility === "flip" && availableAbilityOptions.length > 0 && (
-                <p className="arena__hint">
-                  Выбери до {selectedIndices.length} бит противника, чтобы перевернуть их ({flipTargets.length}/{selectedIndices.length})
-                </p>
-              )}
+            )}
+
+            {turn !== "wait" && !pendingAbilityChoice && (
               <div className="arena__move-actions">
-                <button className="arena__action arena__action--secondary" disabled={busy} onClick={() => setPendingAbilityChoice(false)}>
-                  Назад
-                </button>
-                <button className="arena__action" disabled={busy || availableAbilityOptions.length === 0} onClick={handleSendActionMove}>
-                  Подтвердить способность
+                {turn === "respond" && (
+                  <button className="arena__action arena__action--secondary" disabled={busy} onClick={() => void sendMove([])}>
+                    Не отвечать
+                  </button>
+                )}
+                <button className="arena__action" disabled={busy || selectedIndices.length === 0} onClick={handleConfirmSelection}>
+                  Подтвердить{selectedIndices.length > 0 ? ` (${selectedIndices.length})` : ""}
                 </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {exchangeLog.length > 0 && (
             <div className="arena__exchange-log">
@@ -422,6 +527,16 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
           </button>
         </div>
       )}
+
+      <CombatantBar
+        name={character.displayName}
+        level={character.level}
+        className={character.class.name}
+        hp={battle.character.hp}
+        maxHp={battle.character.maxHp}
+        avatarUrl={character.avatarUrl}
+        variant="hp"
+      />
 
       {error && <p className="arena__error">{error}</p>}
     </div>

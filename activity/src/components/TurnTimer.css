@@ -1,0 +1,32 @@
+.turn-timer {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: conic-gradient(#23a55a var(--turn-timer-percent, 100%), #1e1f22 0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: background 0.3s linear;
+  flex: 0 0 auto;
+}
+
+.turn-timer--low {
+  background: conic-gradient(#f23f42 var(--turn-timer-percent, 100%), #1e1f22 0);
+}
+
+.turn-timer::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: #2b2d31;
+}
+
+.turn-timer__seconds {
+  position: relative;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}

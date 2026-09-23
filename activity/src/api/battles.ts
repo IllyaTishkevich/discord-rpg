@@ -1,5 +1,5 @@
 import { apiFetch } from "./client";
-import type { AbilityChoice, BattleState, ExchangeMoveResponse, RoundResult, ThrowResult } from "../types/battle";
+import type { AbilityChoice, BattleState, ExchangeMoveResponse, RoundResult, ThrowRoundResponse } from "../types/battle";
 
 export function startPveBattle(): Promise<BattleState> {
   return apiFetch<BattleState>("/battles/pve", { method: "POST" });
@@ -21,8 +21,8 @@ export function declinePvpBattle(battleId: number): Promise<BattleState> {
   return apiFetch<BattleState>(`/battles/${battleId}/decline`, { method: "POST" });
 }
 
-export function throwRound(battleId: number): Promise<ThrowResult> {
-  return apiFetch<ThrowResult>(`/battles/${battleId}/throw`, { method: "POST" });
+export function throwRound(battleId: number): Promise<ThrowRoundResponse> {
+  return apiFetch<ThrowRoundResponse>(`/battles/${battleId}/throw`, { method: "POST" });
 }
 
 /**

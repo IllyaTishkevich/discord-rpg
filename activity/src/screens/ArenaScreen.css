@@ -1,6 +1,9 @@
 .arena {
   padding: 24px;
   color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .arena__action {
@@ -20,22 +23,105 @@
 }
 
 .arena__board {
-  margin-top: 20px;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.arena__side {
-  margin-bottom: 16px;
+.arena__coins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
-.arena__side p {
+.arena__pool {
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.arena__pool--opponent {
+  background: rgba(88, 101, 242, 0.12);
+  border: 1px solid rgba(88, 101, 242, 0.35);
+}
+
+.arena__pool--player {
+  background: rgba(242, 63, 66, 0.1);
+  border: 1px solid rgba(242, 63, 66, 0.35);
+}
+
+.arena__pool-label {
   margin: 0 0 8px;
   opacity: 0.7;
   font-size: 14px;
 }
 
-.arena__coins {
+.arena__stage {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 16px;
+  background: rgba(35, 165, 90, 0.08);
+  border: 1px solid rgba(35, 165, 90, 0.3);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.arena__stage-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.arena__log-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.arena__log-panel--opponent {
+  background: rgba(240, 178, 50, 0.12);
+  border: 1px solid rgba(240, 178, 50, 0.35);
+}
+
+.arena__log-panel--player {
+  background: rgba(147, 112, 219, 0.15);
+  border: 1px solid rgba(147, 112, 219, 0.4);
+}
+
+.arena__log-coin {
+  transform: scale(0.6);
+  margin: -11px;
+}
+
+.arena__stage-circles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.arena__stage-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed;
+}
+
+.arena__stage-circle--opponent {
+  border-color: rgba(88, 101, 242, 0.6);
+}
+
+.arena__stage-circle--player {
+  border-color: rgba(242, 63, 66, 0.6);
 }
 
 .arena__hint {

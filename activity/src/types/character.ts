@@ -22,6 +22,10 @@ export interface CharacterClassSummary {
 
 export interface Character {
   id: number;
+  displayName: string;
+  // Discord CDN URL, or null if this user never set an avatar — show a
+  // placeholder in that case, same as everywhere else in the app.
+  avatarUrl: string | null;
   class: {
     code: string;
     name: string;

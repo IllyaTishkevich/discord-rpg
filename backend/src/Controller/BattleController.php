@@ -81,7 +81,16 @@ class BattleController extends AbstractApiController
             ]);
         }
 
-        return $this->json($this->serializer->battle($battle));
+        return $this->json([
+            ...$this->serializer->battle($battle),
+            // Lets the Activity's turn timer safely re-sync bit-level state
+            // (faces/used/turn) after auto-resolving a stale PvE move via
+            // syncExchangeState() above, the same way it already does for a
+            // polling PvP viewer — see ArenaScreen.tsx's TurnTimer onExpire.
+            'exchange' => $battle->hasPendingThrow()
+                ? $this->serializer->throwResult($battleService->currentThrowResult($battle))
+                : null,
+        ]);
     }
 
     /**
@@ -138,10 +147,20 @@ class BattleController extends AbstractApiController
         }
 
         if ($battle->isPvp()) {
-            return $this->json($this->serializer->throwResultForViewer($result, $viewerIsOpponentSide));
+            return $this->json([
+                ...$this->serializer->throwResultForViewer($result, $viewerIsOpponentSide),
+                // Carries the freshly-set roundDeadlineAt — throwRound() is
+                // the only place that sets it besides submitExchangeMove()
+                // (whose own response already includes this), and this
+                // response otherwise has nowhere else to put it.
+                'battle' => $this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
+            ]);
         }
 
-        return $this->json($this->serializer->throwResult($result));
+        return $this->json([
+            ...$this->serializer->throwResult($result),
+            'battle' => $this->serializer->battle($battle),
+        ]);
     }
 
     /**
