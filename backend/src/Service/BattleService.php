@@ -18,6 +18,7 @@ use App\Entity\BattleRound;
 use App\Entity\Bit;
 use App\Entity\Character;
 use App\Entity\Event;
+use App\Entity\Monster;
 use App\Enum\BattleMode;
 use App\Enum\BattleStatus;
 use App\Enum\BitFace;
@@ -27,6 +28,7 @@ use App\Exception\InsufficientEnergyException;
 use App\Exception\InvalidBattleStateException;
 use App\Exception\NoPendingThrowException;
 use App\Exception\NotBattleParticipantException;
+use App\Repository\MonsterRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -51,7 +53,9 @@ use Doctrine\ORM\EntityManagerInterface;
  * default), UnblockableDamage, Reroll, or DamageMirror — not a mix. In the
  * interactive flow the ability is chosen per action-bit move as it's
  * played; in the non-interactive engine it's one upfront choice for the
- * whole round. The bot opponent always uses Flip.
+ * whole round. The bot opponent picks uniformly at random from its
+ * Monster's granted abilities each time (see pickBotAbility()), falling
+ * back to Flip for battles with no catalog monster attached.
  *
  * PvP lifecycle (see docs/BATTLE_ROOM_DESIGN.md): createPvpChallenge()
  * creates the Battle itself in `waiting` status — that row *is* the invite.
@@ -60,12 +64,16 @@ use Doctrine\ORM\EntityManagerInterface;
  */
 class BattleService
 {
+    // Fallback opponent for when the Monster catalog is empty (fresh
+    // install before an admin has added anything to it — see
+    // startPveBattle()/opponentBitThrows()) or for battles/rows created
+    // before the catalog existed. Placeholder balance (see docs/ROADMAP.md,
+    // Game Design backlog) — the monster deliberately rolls advantage less
+    // often than a well-built player character, so it rarely leads the
+    // exchange sequence (docs/COMBAT_V2_DESIGN.md §2).
     private const MONSTER_NAME = 'Тренировочный голем';
     private const MONSTER_HP = 20;
-    // Each entry: [faceA, faceB, advantageA, advantageB]. Placeholder balance
-    // (see docs/ROADMAP.md, Game Design backlog) — the monster deliberately
-    // rolls advantage less often than a well-built player character, so it
-    // rarely leads the exchange sequence (docs/COMBAT_V2_DESIGN.md §2).
+    // Each entry: [faceA, faceB, advantageA, advantageB].
     private const MONSTER_BITS = [
         [BitFace::Attack, BitFace::Defense, false, false],
         [BitFace::Attack, BitFace::Action, false, true],
@@ -89,6 +97,7 @@ class BattleService
         private readonly InteractiveExchangeEngine $interactiveEngine,
         private readonly AbilityResolver $abilityResolver,
         private readonly QuestService $questService,
+        private readonly MonsterRepository $monsterRepository,
     ) {
     }
 
@@ -100,7 +109,13 @@ class BattleService
 
         $character->setEnergy($character->getEnergy() - 1);
 
-        $battle = new Battle($character, self::MONSTER_NAME, self::MONSTER_HP);
+        $monster = $this->monsterRepository->findForCharacterLevel($character->getLevel());
+        $battle = null !== $monster
+            ? new Battle($character, $monster->getName(), $monster->getMaxHp())
+            : new Battle($character, self::MONSTER_NAME, self::MONSTER_HP);
+        if (null !== $monster) {
+            $battle->setOpponentMonster($monster);
+        }
         $this->entityManager->persist($battle);
         $this->entityManager->flush();
 
@@ -279,10 +294,7 @@ class BattleService
                 static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()),
                 $battle->getOpponentCharacter()->getAllBits(),
             )
-            : array_map(
-                static fn (array $bit) => BitThrow::random($bit[0], $bit[1], $bit[2], $bit[3]),
-                self::MONSTER_BITS,
-            );
+            : $this->opponentBitThrows($battle);
 
         $battle->setPendingThrows(
             array_map(static fn (BitThrow $t) => $t->toArray(), $playerThrows),
@@ -296,7 +308,7 @@ class BattleService
             // startRound() may already auto-play the bot's opening move (or,
             // in the near-impossible case of a 0-bit character, resolve the
             // entire round instantly) — apply any such exchanges now.
-            ['state' => $roundState, 'exchanges' => $exchanges] = $this->interactiveEngine->startRound($playerThrows, $opponentThrows);
+            ['state' => $roundState, 'exchanges' => $exchanges] = $this->interactiveEngine->startRound($playerThrows, $opponentThrows, $this->pickBotAbility($battle));
             foreach ($exchanges as $exchange) {
                 $this->applyExchangeDamage($battle, $exchange);
             }
@@ -306,6 +318,48 @@ class BattleService
         $this->entityManager->flush();
 
         return $this->throwResultFromThrows($battle, $playerThrows, $opponentThrows);
+    }
+
+    /**
+     * @return BitThrow[]
+     */
+    private function opponentBitThrows(Battle $battle): array
+    {
+        $monster = $battle->getOpponentMonster();
+        $monsterBits = null !== $monster ? $monster->getBits()->toArray() : [];
+        if ([] === $monsterBits) {
+            // No catalog monster (legacy/empty catalog), or one with no bits
+            // configured yet — an admin-editable monster with zero bits
+            // would otherwise leave it unable to act at all.
+            return array_map(
+                static fn (array $bit) => BitThrow::random($bit[0], $bit[1], $bit[2], $bit[3]),
+                self::MONSTER_BITS,
+            );
+        }
+
+        return array_map(
+            static fn (Bit $bit) => BitThrow::random($bit->getFaceA(), $bit->getFaceB(), $bit->hasAdvantageA(), $bit->hasAdvantageB()),
+            $monsterBits,
+        );
+    }
+
+    /**
+     * The bot's ability choice for this battle — uniformly at random from
+     * its Monster's granted abilities each time it's asked, or Flip if the
+     * battle has no catalog monster (or that monster grants none). Targets
+     * are always left empty: only Flip reads them, and its heuristic
+     * (BotActionStrategy, via CombatResolver/the exchange engines) already
+     * picks sensible ones when none are declared.
+     */
+    private function pickBotAbility(Battle $battle): AbilityChoice
+    {
+        $monster = $battle->getOpponentMonster();
+        $abilities = null !== $monster ? $monster->getAbilities()->toArray() : [];
+        if ([] === $abilities) {
+            return AbilityChoice::flip();
+        }
+
+        return new AbilityChoice($abilities[array_rand($abilities)]->getType(), []);
     }
 
     private function currentThrowResult(Battle $battle): ThrowResult
@@ -356,10 +410,8 @@ class BattleService
         $rolledActionCount = $this->abilityResolver->countActionFaces(array_map(BitThrow::fromArray(...), $battle->getPendingPlayerThrows()));
         $this->abilityResolver->assertAffordable($characterChoice, $rolledActionCount);
 
-        // PvE/event opponent (the bot) always uses Flip via BotActionStrategy —
-        // represented here as a Flip choice with no explicit targets so
-        // computeAndApplyRound's post-damage step is a no-op for its side.
-        return $this->computeAndApplyRound($battle, $characterChoice, AbilityChoice::flip());
+        // PvE/event opponent (the bot) — see pickBotAbility().
+        return $this->computeAndApplyRound($battle, $characterChoice, $this->pickBotAbility($battle));
     }
 
     /**
@@ -395,7 +447,7 @@ class BattleService
             $this->assertAbilityAvailable($battle->getCharacter(), $ability);
         }
 
-        $botChoice = AbilityChoice::flip();
+        $botChoice = $this->pickBotAbility($battle);
         $newExchanges = [];
 
         ['state' => $state, 'exchange' => $exchange] = 'lead' === $turn

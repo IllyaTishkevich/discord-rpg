@@ -74,6 +74,19 @@ class Battle
     #[ORM\JoinColumn(nullable: true)]
     private ?Event $event = null;
 
+    /**
+     * Set for PvE/event battles whose opponent was drawn from the Monster
+     * catalog — its bits/abilities are then what throwRound()/the bot's
+     * ability choice actually use, instead of BattleService's old hardcoded
+     * fallback constants (kept for battles/catalog rows predating this, or
+     * an empty catalog). opponentName/opponentHp above are still the source
+     * of truth for display and HP tracking, just copied from this monster
+     * at battle creation time.
+     */
+    #[ORM\ManyToOne(targetEntity: Monster::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Monster $opponentMonster = null;
+
     // PvP-only readiness flags — true by default so PvE/event battles (which
     // never go through the waiting-room flow) are unaffected.
     #[ORM\Column]
@@ -266,6 +279,18 @@ class Battle
     public function setEvent(?Event $event): static
     {
         $this->event = $event;
+
+        return $this;
+    }
+
+    public function getOpponentMonster(): ?Monster
+    {
+        return $this->opponentMonster;
+    }
+
+    public function setOpponentMonster(?Monster $opponentMonster): static
+    {
+        $this->opponentMonster = $opponentMonster;
 
         return $this;
     }
