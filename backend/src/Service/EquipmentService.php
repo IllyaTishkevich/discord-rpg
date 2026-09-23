@@ -35,6 +35,13 @@ class EquipmentService
             $character->increaseMaxHp($equipment->getHpBonus());
         }
 
+        // Independent of the effect above — an item can grant an ability
+        // regardless of whether it's an HP or bit item (see Equipment's
+        // docblock on $grantedAbility).
+        if (null !== $equipment->getGrantedAbility()) {
+            $character->addAbility($equipment->getGrantedAbility());
+        }
+
         $purchase = new CharacterEquipment($character, $equipment);
         $this->entityManager->persist($purchase);
         $this->entityManager->flush();

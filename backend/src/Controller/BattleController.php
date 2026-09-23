@@ -7,6 +7,7 @@ use App\Entity\Battle;
 use App\Entity\Character;
 use App\Entity\User;
 use App\Enum\AbilityType;
+use App\Exception\AbilityNotAvailableException;
 use App\Exception\BattleAlreadyFinishedException;
 use App\Exception\InsufficientActionPointsException;
 use App\Exception\InsufficientEnergyException;
@@ -163,7 +164,7 @@ class BattleController extends AbstractApiController
             return $this->json(['error' => 'Call /throw before submitting a move.'], 409);
         } catch (InvalidExchangeMoveException $e) {
             return $this->json(['error' => $e->getMessage()], 400);
-        } catch (InsufficientActionPointsException|InvalidBattleStateException|BattleAlreadyFinishedException $e) {
+        } catch (AbilityNotAvailableException|InsufficientActionPointsException|InvalidBattleStateException|BattleAlreadyFinishedException $e) {
             return $this->json(['error' => $e->getMessage()], 409);
         }
 
@@ -214,7 +215,7 @@ class BattleController extends AbstractApiController
             $round = $battleService->submitActions($battle, $viewerCharacter, $choice);
         } catch (NoPendingThrowException) {
             return $this->json(['error' => 'Call /throw before /submit-actions.'], 409);
-        } catch (InsufficientActionPointsException $e) {
+        } catch (AbilityNotAvailableException|InsufficientActionPointsException $e) {
             return $this->json(['error' => $e->getMessage()], 409);
         } catch (InvalidBattleStateException|BattleAlreadyFinishedException $e) {
             return $this->json(['error' => $e->getMessage()], 409);

@@ -41,6 +41,7 @@ class CharacterCrudController extends AbstractCrudController
         yield IntegerField::new('xp', 'XP');
         yield IntegerField::new('coins', 'Монеты');
         yield AssociationField::new('purchasedBits', 'Купленные биты')->hideOnIndex();
+        yield AssociationField::new('abilities', 'Личные способности')->hideOnIndex();
         yield DateTimeField::new('createdAt', 'Создан')->hideOnForm();
     }
 }

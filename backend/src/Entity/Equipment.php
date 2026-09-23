@@ -50,6 +50,15 @@ class Equipment
     #[ORM\Column(nullable: true)]
     private ?int $hpBonus = null;
 
+    /**
+     * Optional, independent of $effectType — buying this item also grants
+     * the character this ability permanently (EquipmentService::purchase()),
+     * on top of whatever its HP/bit effect does.
+     */
+    #[ORM\ManyToOne(targetEntity: Ability::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Ability $grantedAbility = null;
+
     public function __construct(string $code, string $name, int $price, EquipmentEffectType $effectType)
     {
         $this->code = $code;
@@ -189,6 +198,18 @@ class Equipment
     public function setHpBonus(?int $hpBonus): static
     {
         $this->hpBonus = $hpBonus;
+
+        return $this;
+    }
+
+    public function getGrantedAbility(): ?Ability
+    {
+        return $this->grantedAbility;
+    }
+
+    public function setGrantedAbility(?Ability $grantedAbility): static
+    {
+        $this->grantedAbility = $grantedAbility;
 
         return $this;
     }

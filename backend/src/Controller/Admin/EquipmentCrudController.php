@@ -6,6 +6,7 @@ use App\Entity\Equipment;
 use App\Enum\EquipmentEffectType;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\BooleanField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
@@ -50,5 +51,6 @@ class EquipmentCrudController extends AbstractCrudController
         yield BooleanField::new('bitAdvantageA', 'Преимущество на A (для bit)')->hideOnIndex();
         yield BooleanField::new('bitAdvantageB', 'Преимущество на B (для bit)')->hideOnIndex();
         yield IntegerField::new('hpBonus', 'Бонус HP (для hp)')->hideOnIndex();
+        yield AssociationField::new('grantedAbility', 'Даёт способность')->hideOnIndex();
     }
 }

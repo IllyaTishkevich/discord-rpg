@@ -45,5 +45,6 @@ class CharacterClassCrudController extends AbstractCrudController
         // Editable many-to-many: pick which template Bit rows (character
         // === null) this class starts with — see Bit's docblock.
         yield AssociationField::new('starterBits', 'Стартовые биты')->hideOnIndex();
+        yield AssociationField::new('abilities', 'Способности класса')->hideOnIndex();
     }
 }

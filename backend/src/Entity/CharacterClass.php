@@ -51,6 +51,18 @@ class CharacterClass
     #[ORM\JoinTable(name: 'character_class_bit')]
     private Collection $starterBits;
 
+    /**
+     * Combat abilities every character of this class can choose from (on
+     * top of whatever it was granted individually — see
+     * Character::$abilities and Character::hasAbilityType()). Owning
+     * side — unidirectional, Ability has no inverse property.
+     *
+     * @var Collection<int, Ability>
+     */
+    #[ORM\ManyToMany(targetEntity: Ability::class)]
+    #[ORM\JoinTable(name: 'character_class_ability')]
+    private Collection $abilities;
+
     #[ORM\OneToMany(mappedBy: 'characterClass', targetEntity: Character::class)]
     private Collection $characters;
 
@@ -61,6 +73,7 @@ class CharacterClass
         $this->baseHp = $baseHp;
         $this->baseEnergy = $baseEnergy;
         $this->starterBits = new ArrayCollection();
+        $this->abilities = new ArrayCollection();
         $this->characters = new ArrayCollection();
     }
 
@@ -149,6 +162,30 @@ class CharacterClass
     public function removeStarterBit(Bit $bit): static
     {
         $this->starterBits->removeElement($bit);
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Ability>
+     */
+    public function getAbilities(): Collection
+    {
+        return $this->abilities;
+    }
+
+    public function addAbility(Ability $ability): static
+    {
+        if (!$this->abilities->contains($ability)) {
+            $this->abilities->add($ability);
+        }
+
+        return $this;
+    }
+
+    public function removeAbility(Ability $ability): static
+    {
+        $this->abilities->removeElement($ability);
 
         return $this;
     }

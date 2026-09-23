@@ -35,6 +35,7 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkTo(CharacterCrudController::class, 'Персонажи', 'fa fa-shield-alt');
         yield MenuItem::linkTo(CharacterClassCrudController::class, 'Классы персонажей', 'fa fa-list');
         yield MenuItem::linkTo(BitCrudController::class, 'Биты', 'fa fa-circle');
+        yield MenuItem::linkTo(AbilityCrudController::class, 'Способности', 'fa fa-magic');
 
         yield MenuItem::section('Экономика');
         yield MenuItem::linkTo(EquipmentCrudController::class, 'Снаряжение', 'fa fa-shopping-bag');

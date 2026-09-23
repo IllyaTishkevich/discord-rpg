@@ -2,6 +2,7 @@
 
 namespace App\Entity;
 
+use App\Enum\AbilityType;
 use App\Repository\CharacterRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -33,6 +34,19 @@ class Character
     #[ORM\ManyToMany(targetEntity: Bit::class)]
     #[ORM\JoinTable(name: 'character_bit')]
     private Collection $purchasedBits;
+
+    /**
+     * Combat abilities granted directly to this character (via admin, or
+     * equipment that grants one on purchase — see
+     * EquipmentService::purchase()), on top of whatever its class allows.
+     * Unidirectional, Ability has no inverse property. See
+     * hasAbilityType() for the full availability check.
+     *
+     * @var Collection<int, Ability>
+     */
+    #[ORM\ManyToMany(targetEntity: Ability::class)]
+    #[ORM\JoinTable(name: 'character_ability')]
+    private Collection $abilities;
 
     #[ORM\Column]
     private int $hp;
@@ -68,6 +82,7 @@ class Character
         $this->energy = $this->maxEnergy;
         $this->createdAt = new \DateTimeImmutable();
         $this->purchasedBits = new ArrayCollection();
+        $this->abilities = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -118,6 +133,52 @@ class Character
     public function getAllBits(): array
     {
         return [...$this->characterClass->getStarterBits(), ...$this->purchasedBits];
+    }
+
+    /**
+     * @return Collection<int, Ability>
+     */
+    public function getAbilities(): Collection
+    {
+        return $this->abilities;
+    }
+
+    public function addAbility(Ability $ability): static
+    {
+        if (!$this->abilities->contains($ability)) {
+            $this->abilities->add($ability);
+        }
+
+        return $this;
+    }
+
+    public function removeAbility(Ability $ability): static
+    {
+        $this->abilities->removeElement($ability);
+
+        return $this;
+    }
+
+    /**
+     * The full set of abilities this character can choose from in battle:
+     * its class's abilities plus whatever it was granted individually.
+     *
+     * @return Ability[]
+     */
+    public function getAllAbilities(): array
+    {
+        return [...$this->characterClass->getAbilities(), ...$this->abilities];
+    }
+
+    public function hasAbilityType(AbilityType $type): bool
+    {
+        foreach ($this->getAllAbilities() as $ability) {
+            if ($ability->getType() === $type) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function getHp(): int

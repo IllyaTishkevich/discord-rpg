@@ -29,4 +29,17 @@ enum AbilityType: string
             self::Flip, self::UnblockableDamage => null, // variable — capped by/equal to rolled action points
         };
     }
+
+    /**
+     * Russian display label — admin panel only (see Ability::__toString()).
+     */
+    public function label(): string
+    {
+        return match ($this) {
+            self::Flip => 'Переворот',
+            self::UnblockableDamage => 'Неблокируемый урон',
+            self::Reroll => 'Переброс',
+            self::DamageMirror => 'Зеркало урона',
+        };
+    }
 }

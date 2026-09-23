@@ -21,6 +21,7 @@ use App\Entity\Event;
 use App\Enum\BattleMode;
 use App\Enum\BattleStatus;
 use App\Enum\BitFace;
+use App\Exception\AbilityNotAvailableException;
 use App\Exception\BattleAlreadyFinishedException;
 use App\Exception\InsufficientEnergyException;
 use App\Exception\InvalidBattleStateException;
@@ -198,6 +199,7 @@ class BattleService
         }
 
         $asOpponentSide = $this->requireSide($battle, $viewer);
+        $this->assertAbilityAvailable($viewer, $choice);
         $rolledActionCount = $this->abilityResolver->countActionFaces(array_map(
             BitThrow::fromArray(...),
             $asOpponentSide ? $battle->getPendingOpponentThrows() : $battle->getPendingPlayerThrows(),
@@ -389,6 +391,9 @@ class BattleService
         if ('over' === $turn) {
             throw new InvalidBattleStateException('This round has already been fully played out.');
         }
+        if (null !== $ability) {
+            $this->assertAbilityAvailable($battle->getCharacter(), $ability);
+        }
 
         $botChoice = AbilityChoice::flip();
         $newExchanges = [];
@@ -457,6 +462,22 @@ class BattleService
         $character = $battle->getCharacter();
         $character->setHp($character->getHp() - $exchange['damageToPlayer']);
         $battle->setOpponentHp($battle->getOpponentHp() - $exchange['damageToOpponent']);
+    }
+
+    /**
+     * Which abilities a character can pick from is now configurable per
+     * class/character/equipment (see Character::hasAbilityType()) instead
+     * of every ability being available to everyone — enforced here rather
+     * than trusting the client to only ever offer what it was granted.
+     */
+    private function assertAbilityAvailable(Character $character, AbilityChoice $choice): void
+    {
+        if (!$character->hasAbilityType($choice->ability)) {
+            throw new AbilityNotAvailableException(\sprintf(
+                'This character does not have the "%s" ability.',
+                $choice->ability->value,
+            ));
+        }
     }
 
     private function isBattleKnockedOut(Battle $battle): bool

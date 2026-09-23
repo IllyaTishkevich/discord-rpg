@@ -2,6 +2,7 @@
 
 namespace App\Tests\Controller\Admin;
 
+use App\Controller\Admin\AbilityCrudController;
 use App\Controller\Admin\AdminCrudController;
 use App\Controller\Admin\BattleCrudController;
 use App\Controller\Admin\BattleRoundCrudController;
@@ -45,6 +46,7 @@ class AdminPanelTest extends WebTestCase
         CharacterCrudController::class,
         CharacterClassCrudController::class,
         BitCrudController::class,
+        AbilityCrudController::class,
         EquipmentCrudController::class,
         CharacterEquipmentCrudController::class,
         BattleCrudController::class,
@@ -62,6 +64,7 @@ class AdminPanelTest extends WebTestCase
     private const NEW_ENABLED_CONTROLLERS = [
         CharacterClassCrudController::class,
         BitCrudController::class,
+        AbilityCrudController::class,
         EquipmentCrudController::class,
     ];
 

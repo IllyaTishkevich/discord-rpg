@@ -5,6 +5,7 @@ namespace App\Command;
 use App\Entity\Bit;
 use App\Entity\CharacterClass;
 use App\Enum\BitFace;
+use App\Repository\AbilityRepository;
 use App\Repository\CharacterClassRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -62,6 +63,7 @@ class SeedCharacterClassesCommand extends Command
 
     public function __construct(
         private readonly CharacterClassRepository $characterClassRepository,
+        private readonly AbilityRepository $abilityRepository,
         private readonly EntityManagerInterface $entityManager,
     ) {
         parent::__construct();
@@ -70,6 +72,10 @@ class SeedCharacterClassesCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+        // Seeded by the migration that introduced Ability (see
+        // Version20260923113632) — every class starts with every ability
+        // available, same as before this became configurable.
+        $allAbilities = $this->abilityRepository->findAll();
 
         foreach (self::CLASSES as $definition) {
             if (null !== $this->characterClassRepository->findOneByCode($definition['code'])) {
@@ -94,6 +100,10 @@ class SeedCharacterClassesCommand extends Command
                 );
                 $this->entityManager->persist($templateBit);
                 $characterClass->addStarterBit($templateBit);
+            }
+
+            foreach ($allAbilities as $ability) {
+                $characterClass->addAbility($ability);
             }
 
             $io->writeln(sprintf('Created class "%s".', $definition['code']));
