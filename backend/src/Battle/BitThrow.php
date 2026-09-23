@@ -115,4 +115,32 @@ final class BitThrow
             $newIsA ? $this->multiplierA : $this->multiplierB,
         );
     }
+
+    /**
+     * Doubles the multiplier of whichever side is currently thrown — the
+     * effect of the "Double" ability, applied to one of the caster's own
+     * not-yet-activated bits. Only the currently-showing side's static
+     * multiplier (multiplierA or multiplierB) is doubled, kept in sync with
+     * thrownMultiplier the same way flipped() keeps them in sync; the other,
+     * not-currently-showing side is untouched (flipping this bit later in
+     * the same round reveals its original, undoubled value).
+     */
+    public function doubled(): self
+    {
+        $isCurrentlyA = $this->thrownFace === $this->faceA
+            && $this->thrownAdvantage === $this->advantageA
+            && $this->thrownMultiplier === $this->multiplierA;
+
+        return new self(
+            $this->faceA,
+            $this->faceB,
+            $this->advantageA,
+            $this->advantageB,
+            $this->thrownFace,
+            $this->thrownAdvantage,
+            $isCurrentlyA ? $this->multiplierA * 2 : $this->multiplierA,
+            $isCurrentlyA ? $this->multiplierB : $this->multiplierB * 2,
+            $this->thrownMultiplier * 2,
+        );
+    }
 }

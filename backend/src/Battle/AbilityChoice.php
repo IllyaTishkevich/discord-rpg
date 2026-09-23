@@ -6,7 +6,9 @@ use App\Enum\AbilityType;
 
 /**
  * One side's choice of how to spend this round's rolled action points.
- * `targets` is only meaningful for AbilityType::Flip.
+ * `targets` is only meaningful for AbilityType::Flip and AbilityType::Destroy
+ * (both target specific not-yet-activated bits of the OPPONENT) and
+ * AbilityType::Double (targets one of the caster's OWN not-yet-activated bits).
  */
 final class AbilityChoice
 {

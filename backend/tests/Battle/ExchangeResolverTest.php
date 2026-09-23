@@ -144,6 +144,57 @@ class ExchangeResolverTest extends TestCase
         self::assertSame(2, $result->damageToOpponent);
     }
 
+    public function testDestroyPermanentlyRemovesAnUnusedOpponentBit(): void
+    {
+        // Player leads first (2 advantage bits) with both action bits at
+        // once, affording Destroy's fixed cost of 2. Opponent's only bit
+        // (a lone, otherwise-unblockable attack — no declared target means
+        // Destroy auto-picks an attack bit first, same priority as Flip's
+        // fallback) is destroyed before it ever gets a turn to lead.
+        $resolver = new ExchangeResolver();
+
+        $result = $resolver->resolveRound(
+            playerThrows: [$this->bit(BitFace::Action, true), $this->bit(BitFace::Action, true)],
+            opponentThrows: [$this->bit(BitFace::Attack)],
+            playerChoice: new AbilityChoice(AbilityType::Destroy),
+            opponentChoice: AbilityChoice::flip(),
+        );
+
+        // Contrast with testHeldBackDefenseBlocksTheOpponentsCounterLeadNextExchange,
+        // where an unanswered lone opponent attack gets a free solo exchange
+        // once the player empties out, dealing 1 damage. Here it never gets
+        // the chance — the round ends after just the one exchange.
+        self::assertCount(1, $result->exchanges);
+        self::assertSame(0, $result->damageToOpponent);
+        self::assertSame(0, $result->damageToPlayer);
+    }
+
+    public function testDoublePermanentlyDoublesTheMultiplierOfOwnUnusedBit(): void
+    {
+        // chooseLeadMove always prefers Attack over Action over Defense
+        // (§6 heuristic), so the only bit Double can reliably target BEFORE
+        // it's activated is a Defense bit (led last) — an Attack bit in the
+        // same hand would always be led first, activated, and no longer be
+        // a valid "not yet activated" target.
+        $resolver = new ExchangeResolver();
+
+        $result = $resolver->resolveRound(
+            playerThrows: [$this->bit(BitFace::Action, true), $this->bit(BitFace::Action, true), $this->bit(BitFace::Defense)],
+            opponentThrows: [$this->bit(BitFace::Attack, advantage: true, multiplier: 3)],
+            playerChoice: new AbilityChoice(AbilityType::Double),
+            opponentChoice: AbilityChoice::flip(),
+        );
+
+        // Exchange 1: player leads with both action bits, doubling its own
+        // Defense bit's multiplier from ×1 to ×2 (no declared target —
+        // auto-fallback picks it, same priority as Flip/Destroy). Exchange
+        // 2: opponent leads with a ×3 attack; player's now-×2 defense
+        // blocks 2 of it, leaving 1 through — an un-doubled (×1) defense
+        // would have left 2 through instead.
+        self::assertSame(0, $result->damageToOpponent);
+        self::assertSame(1, $result->damageToPlayer);
+    }
+
     public function testFlipMutatesTheTargetedOpponentBitFace(): void
     {
         $resolver = new ExchangeResolver();

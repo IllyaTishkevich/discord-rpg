@@ -178,6 +178,61 @@ class InteractiveExchangeEngineTest extends TestCase
         $engine->submitRespond($state, [0]);
     }
 
+    public function testDestroyPermanentlyRemovesAnUnusedOpponentBit(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Action, true), $this->bit(BitFace::Action, true)],
+            [$this->bit(BitFace::Attack), $this->bit(BitFace::Defense)],
+        );
+
+        // Player leads with both action bits, affording Destroy's fixed
+        // cost of 2. No declared target — auto-fallback picks an attack
+        // bit first (same priority as Flip), destroying it before it ever
+        // gets a turn to lead.
+        ['state' => $state, 'exchange' => $ex1] = $engine->submitLead($state, [0, 1], new AbilityChoice(AbilityType::Destroy), AbilityChoice::flip());
+        self::assertSame(0, $ex1['damageToOpponent']);
+        self::assertSame(0, $ex1['damageToPlayer']);
+
+        // Opponent's only bit left is its Defense — nothing left to
+        // threaten the player with, so its solo lead deals no damage.
+        ['state' => $state, 'exchange' => $ex2] = $engine->autoAdvance($state, AbilityChoice::flip());
+        self::assertNotNull($ex2);
+        self::assertSame(0, $ex2['damageToOpponent']);
+        self::assertSame(0, $ex2['damageToPlayer']);
+        self::assertSame('over', $engine->currentTurn($state));
+    }
+
+    public function testDoublePermanentlyDoublesTheMultiplierOfOwnUnusedBit(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Action, true), $this->bit(BitFace::Action, true), $this->bit(BitFace::Defense)],
+            [$this->bit(BitFace::Attack, advantage: true, multiplier: 3)],
+        );
+
+        // Player leads with both action bits, affording Double's fixed cost
+        // of 2. No declared target — auto-fallback picks its own remaining
+        // Defense bit (same priority as Flip/Destroy), doubling its
+        // multiplier from ×1 to ×2.
+        ['state' => $state, 'exchange' => $ex1] = $engine->submitLead($state, [0, 1], new AbilityChoice(AbilityType::Double), AbilityChoice::flip());
+        self::assertSame(0, $ex1['damageToOpponent']);
+        self::assertSame(0, $ex1['damageToPlayer']);
+
+        // Bot's only bit (a ×3 attack) still needs its own solo lead —
+        // autoAdvance() pauses here since the player still has its
+        // (now-doubled) defense bit left to respond with.
+        ['state' => $state, 'exchange' => $ex2] = $engine->autoAdvance($state, AbilityChoice::flip());
+        self::assertNull($ex2);
+        self::assertSame('respond', $engine->currentTurn($state));
+
+        // The doubled (×2) defense blocks 2 of the ×3 attack, leaving 1
+        // through — an un-doubled (×1) defense would have left 2 through.
+        ['exchange' => $ex3] = $engine->submitRespond($state, [2]);
+        self::assertSame(1, $ex3['damageToPlayer']);
+        self::assertSame(0, $ex3['damageToOpponent']);
+    }
+
     public function testFlipDuringLeadMutatesTargetedOpponentBit(): void
     {
         $engine = new InteractiveExchangeEngine();

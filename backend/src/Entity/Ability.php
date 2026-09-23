@@ -10,7 +10,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 use Vich\UploaderBundle\Mapping\Attribute as Vich;
 
 /**
- * Catalog row for one of the 4 fixed combat abilities (App\Enum\AbilityType)
+ * Catalog row for one of the 6 fixed combat abilities (App\Enum\AbilityType)
  * — exists so classes, characters and equipment can each reference "which
  * abilities can this side use", the same way Bit works for the coin
  * definitions themselves. There's normally exactly one Ability row per
@@ -33,6 +33,14 @@ class Ability
 
     #[ORM\Column(enumType: AbilityType::class, unique: true)]
     private AbilityType $type;
+
+    /**
+     * Admin-facing explanation of what the ability actually does — not read
+     * by any battle logic, purely documentation for whoever is managing
+     * class/character/equipment grants in the admin panel.
+     */
+    #[ORM\Column(type: 'text', nullable: true)]
+    private ?string $description = null;
 
     /**
      * Not persisted — Vich reads this on flush to store the file and fill
@@ -78,6 +86,18 @@ class Ability
     public function setType(AbilityType $type): static
     {
         $this->type = $type;
+
+        return $this;
+    }
+
+    public function getDescription(): ?string
+    {
+        return $this->description;
+    }
+
+    public function setDescription(?string $description): static
+    {
+        $this->description = $description;
 
         return $this;
     }

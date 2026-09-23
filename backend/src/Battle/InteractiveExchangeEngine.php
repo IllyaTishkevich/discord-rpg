@@ -565,6 +565,8 @@ final class InteractiveExchangeEngine
             AbilityType::UnblockableDamage => $cost,
             AbilityType::Reroll => $this->applyReroll($state, $isActingSidePlayer),
             AbilityType::DamageMirror => $this->activateMirror($state, $isActingSidePlayer),
+            AbilityType::Destroy => $this->applyDestroy($state, $isActingSidePlayer, $choice->targets),
+            AbilityType::Double => $this->applyDouble($state, $isActingSidePlayer, $choice->targets),
             AbilityType::Flip => 0, // unreachable — handled above
         };
 
@@ -585,12 +587,69 @@ final class InteractiveExchangeEngine
         $targetThrows = $isActingSidePlayer ? $state->opponentThrows : $state->playerThrows;
         $targetUsed = $isActingSidePlayer ? $state->opponentUsed : $state->playerUsed;
 
-        foreach ($this->chooseFlipTargets($declaredTargets, $targetThrows, $targetUsed, $count) as $i) {
+        foreach ($this->chooseBitTargets($declaredTargets, $targetThrows, $targetUsed, $count) as $i) {
             if ($isActingSidePlayer) {
                 $state->opponentThrows[$i] = $state->opponentThrows[$i]->flipped();
             } else {
                 $state->playerThrows[$i] = $state->playerThrows[$i]->flipped();
             }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Permanently removes one of the opponent's not-yet-activated bits from
+     * play — unlike Flip, it never comes back; the round just proceeds as
+     * if that bit had never been thrown. No direct damage (bonus is always 0).
+     *
+     * @param int[] $declaredTargets index the player explicitly asked to destroy
+     */
+    private function applyDestroy(ExchangeRoundState $state, bool $isActingSidePlayer, array $declaredTargets): int
+    {
+        $targetThrows = $isActingSidePlayer ? $state->opponentThrows : $state->playerThrows;
+        $targetUsed = $isActingSidePlayer ? $state->opponentUsed : $state->playerUsed;
+
+        $chosen = $this->chooseBitTargets($declaredTargets, $targetThrows, $targetUsed, 1);
+        if ([] === $chosen) {
+            return 0;
+        }
+
+        if ($isActingSidePlayer) {
+            $state->opponentUsed[$chosen[0]] = true;
+        } else {
+            $state->playerUsed[$chosen[0]] = true;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Permanently doubles the multiplier of one of the caster's OWN
+     * not-yet-activated bits (unlike Flip/Destroy, which target the
+     * opponent) — see BitThrow::doubled(). "Only once per bit" (docs/
+     * COMBAT_V2_DESIGN.md §5) falls out for free: an ability can only ever
+     * trigger once per side per round ($playerAbilityTriggered/
+     * $opponentAbilityTriggered above), and every round starts from a fresh
+     * throw, so there's never a second chance to double the same bit again.
+     *
+     * @param int[] $declaredTargets index the player explicitly asked to double
+     */
+    private function applyDouble(ExchangeRoundState $state, bool $isActingSidePlayer, array $declaredTargets): int
+    {
+        $ownThrows = $isActingSidePlayer ? $state->playerThrows : $state->opponentThrows;
+        $ownUsed = $isActingSidePlayer ? $state->playerUsed : $state->opponentUsed;
+
+        $chosen = $this->chooseBitTargets($declaredTargets, $ownThrows, $ownUsed, 1);
+        if ([] === $chosen) {
+            return 0;
+        }
+
+        $i = $chosen[0];
+        if ($isActingSidePlayer) {
+            $state->playerThrows[$i] = $state->playerThrows[$i]->doubled();
+        } else {
+            $state->opponentThrows[$i] = $state->opponentThrows[$i]->doubled();
         }
 
         return 0;
@@ -603,7 +662,7 @@ final class InteractiveExchangeEngine
      *
      * @return int[]
      */
-    private function chooseFlipTargets(array $declaredTargets, array $throws, array $used, int $maxCount): array
+    private function chooseBitTargets(array $declaredTargets, array $throws, array $used, int $maxCount): array
     {
         $chosen = [];
         foreach ($declaredTargets as $i) {

@@ -25,6 +25,8 @@ const ABILITY_OPTIONS: AbilityOption[] = [
   { type: "unblockable_damage", label: "Неблокируемый урон", description: "Весь запас очков действия — урон в обход защиты", fixedCost: null },
   { type: "reroll", label: "Переброс", description: "1 очко — перебросить все свои биты этого раунда", fixedCost: 1 },
   { type: "damage_mirror", label: "Зеркало урона", description: "2 очка — соперник получает столько же урона, сколько нанёс сам", fixedCost: 2 },
+  { type: "destroy", label: "Уничтожение", description: "2 очка — уничтожить одну неиспользованную биту противника", fixedCost: 2 },
+  { type: "double", label: "Удвоение", description: "2 очка — удвоить номинал одной своей неиспользованной биты", fixedCost: 2 },
 ];
 
 function isAffordable(option: AbilityOption, spentCount: number): boolean {

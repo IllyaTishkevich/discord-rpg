@@ -1,6 +1,6 @@
 import type { BitFace } from "./character";
 
-export type AbilityType = "flip" | "unblockable_damage" | "reroll" | "damage_mirror";
+export type AbilityType = "flip" | "unblockable_damage" | "reroll" | "damage_mirror" | "destroy" | "double";
 
 export interface AbilityChoice {
   ability: AbilityType;

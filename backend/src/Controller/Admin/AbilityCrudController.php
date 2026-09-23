@@ -10,6 +10,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ImageField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use Vich\UploaderBundle\Form\Type\VichImageType;
 
 class AbilityCrudController extends AbstractCrudController
@@ -31,6 +32,9 @@ class AbilityCrudController extends AbstractCrudController
         // Doctrine's enumType mapping (see BitCrudController for why a manual
         // map broke this).
         yield ChoiceField::new('type', 'Тип');
+        yield TextareaField::new('description', 'Описание')
+            ->setHelp('Что делает способность — только для админки, в бой не попадает.')
+            ->hideOnIndex();
         yield ImageField::new('iconName', 'Иконка')
             ->setBasePath('/uploads/abilities')
             ->onlyOnIndex();
@@ -40,10 +44,11 @@ class AbilityCrudController extends AbstractCrudController
     }
 
     /**
-     * The 4 AbilityType cases are fixed and seeded by
-     * Version20260923113632 — this only exists to satisfy EasyAdmin's "New"
-     * action, which instantiates the entity with `new $fqcn()` before the
-     * required-arg constructor has a value from the form.
+     * The 6 AbilityType cases are fixed and seeded by
+     * Version20260923113632/Version20260923171529/Version20260923171931 —
+     * this only exists to satisfy EasyAdmin's "New" action, which
+     * instantiates the entity with `new $fqcn()` before the required-arg
+     * constructor has a value from the form.
      */
     public function createEntity(string $entityFqcn): Ability
     {
