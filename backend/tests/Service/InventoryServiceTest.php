@@ -11,6 +11,8 @@ use App\Entity\User;
 use App\Enum\BitFace;
 use App\Enum\ItemEffectType;
 use App\Enum\ItemType;
+use App\Exception\InsufficientCoinsException;
+use App\Exception\InventoryFullException;
 use App\Exception\ItemNotOwnedException;
 use App\Service\InventoryService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -175,5 +177,47 @@ class InventoryServiceTest extends TestCase
 
         $this->expectException(ItemNotOwnedException::class);
         $this->inventoryService->useItem($stranger, $row);
+    }
+
+    public function testPurchasingAnItemSpendsCoinsAndGrantsIt(): void
+    {
+        $character = $this->makeCharacter();
+        $character->addCoins(50);
+        $item = new Item('Меч', 20, ItemType::Weapon, ItemEffectType::AddBit);
+        $item->setBitFaces(BitFace::Attack, BitFace::Defense);
+
+        $row = $this->inventoryService->purchaseItem($character, $item);
+
+        self::assertSame(30, $character->getCoins());
+        self::assertSame($item, $row->getItem());
+        self::assertFalse($row->isEquipped(), 'a freshly-bought item starts unequipped');
+        self::assertCount(1, $character->getInventoryItems());
+    }
+
+    public function testPurchasingWithoutEnoughCoinsThrowsAndChargesNothing(): void
+    {
+        $character = $this->makeCharacter();
+        $character->addCoins(5);
+        $item = new Item('Меч', 20, ItemType::Weapon, ItemEffectType::AddBit);
+
+        $this->expectException(InsufficientCoinsException::class);
+        try {
+            $this->inventoryService->purchaseItem($character, $item);
+        } finally {
+            self::assertSame(5, $character->getCoins());
+            self::assertCount(0, $character->getInventoryItems());
+        }
+    }
+
+    public function testPurchasingWithAFullInventoryThrows(): void
+    {
+        $character = $this->makeCharacter();
+        $character->addCoins(1000);
+        for ($i = 0; $i < 12; ++$i) {
+            $this->addRow($character, new Item("Filler $i", 1, ItemType::Weapon, ItemEffectType::AddBit));
+        }
+
+        $this->expectException(InventoryFullException::class);
+        $this->inventoryService->purchaseItem($character, new Item('Меч', 20, ItemType::Weapon, ItemEffectType::AddBit));
     }
 }

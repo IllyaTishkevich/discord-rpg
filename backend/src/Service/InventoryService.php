@@ -2,20 +2,78 @@
 
 namespace App\Service;
 
+use App\Entity\Bit;
 use App\Entity\Character;
 use App\Entity\CharacterInventoryItem;
+use App\Entity\Item;
 use App\Enum\ItemEffectType;
+use App\Exception\InsufficientCoinsException;
+use App\Exception\InventoryFullException;
 use App\Exception\ItemNotOwnedException;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * The 3 actions available on an inventory cell (ArenaScreen-equivalent for
- * the Activity's Inventory screen): use, sell, discard.
+ * the Activity's Inventory screen): use, sell, discard — plus granting a new
+ * item in the first place, either bought from the shop (purchaseItem(), see
+ * ItemController) or looted (grantItem(), see LootService).
  */
 class InventoryService
 {
     public function __construct(private readonly EntityManagerInterface $entityManager)
     {
+    }
+
+    /**
+     * Creates the owned-item row for $item, including a concrete Bit if it's
+     * an AddBit item (mirrors EquipmentService::purchase()'s Bit creation) —
+     * the shared primitive behind both a shop purchase and a loot drop.
+     * Doesn't flush or check capacity/cost — callers decide that (LootService
+     * skips a drop that would overflow the inventory rather than erroring;
+     * purchaseItem() below throws instead, since it's a deliberate paid
+     * action).
+     */
+    public function grantItem(Character $character, Item $item): CharacterInventoryItem
+    {
+        $inventoryItem = new CharacterInventoryItem($character, $item);
+
+        if (ItemEffectType::AddBit === $item->getEffectType()) {
+            $bit = new Bit(
+                $item->getBitFaceA(),
+                $item->getBitFaceB(),
+                $item->hasBitAdvantageA(),
+                $item->hasBitAdvantageB(),
+                $item->getBitMultiplierA(),
+                $item->getBitMultiplierB(),
+            );
+            $this->entityManager->persist($bit);
+            $inventoryItem->setGrantedBit($bit);
+        }
+
+        $character->addInventoryItem($inventoryItem);
+        $this->entityManager->persist($inventoryItem);
+
+        return $inventoryItem;
+    }
+
+    /**
+     * Buys $item from the shop (ItemController) — spends coins equal to its
+     * price (same field sellItem() refunds half of) and grants it via
+     * grantItem() above.
+     */
+    public function purchaseItem(Character $character, Item $item): CharacterInventoryItem
+    {
+        if (\count($character->getInventoryItems()) >= $character->getInventoryCapacity()) {
+            throw new InventoryFullException('Inventory is full.');
+        }
+        if (!$character->trySpendCoins($item->getPrice())) {
+            throw new InsufficientCoinsException('Not enough coins to buy this item.');
+        }
+
+        $row = $this->grantItem($character, $item);
+        $this->entityManager->flush();
+
+        return $row;
     }
 
     /**

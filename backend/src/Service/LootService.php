@@ -2,12 +2,9 @@
 
 namespace App\Service;
 
-use App\Entity\Bit;
 use App\Entity\Character;
-use App\Entity\CharacterInventoryItem;
 use App\Entity\Item;
 use App\Entity\Monster;
-use App\Enum\ItemEffectType;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -27,6 +24,7 @@ class LootService
      */
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly InventoryService $inventoryService,
         ?\Closure $rollChance = null,
     ) {
         $this->rollChance = $rollChance ?? static fn (int $chancePercent): bool => random_int(1, 100) <= $chancePercent;
@@ -57,7 +55,8 @@ class LootService
                 continue;
             }
 
-            $dropped[] = $this->grantItem($character, $drop['item']);
+            $this->inventoryService->grantItem($character, $drop['item']);
+            $dropped[] = $drop['item'];
         }
 
         if ([] !== $dropped) {
@@ -65,28 +64,5 @@ class LootService
         }
 
         return $dropped;
-    }
-
-    private function grantItem(Character $character, Item $item): Item
-    {
-        $inventoryItem = new CharacterInventoryItem($character, $item);
-
-        if (ItemEffectType::AddBit === $item->getEffectType()) {
-            $bit = new Bit(
-                $item->getBitFaceA(),
-                $item->getBitFaceB(),
-                $item->hasBitAdvantageA(),
-                $item->hasBitAdvantageB(),
-                $item->getBitMultiplierA(),
-                $item->getBitMultiplierB(),
-            );
-            $this->entityManager->persist($bit);
-            $inventoryItem->setGrantedBit($bit);
-        }
-
-        $character->addInventoryItem($inventoryItem);
-        $this->entityManager->persist($inventoryItem);
-
-        return $item;
     }
 }

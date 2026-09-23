@@ -10,6 +10,7 @@ use App\Entity\User;
 use App\Enum\BitFace;
 use App\Enum\ItemEffectType;
 use App\Enum\ItemType;
+use App\Service\InventoryService;
 use App\Service\LootService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
@@ -22,6 +23,11 @@ class LootServiceTest extends TestCase
         $class = new CharacterClass('warrior', 'Воин', 30, 10);
 
         return new Character($user, $class);
+    }
+
+    private function makeLootService(EntityManagerInterface $entityManager, ?\Closure $rollChance = null): LootService
+    {
+        return new LootService($entityManager, new InventoryService($entityManager), $rollChance);
     }
 
     private function makeItem(string $name = 'Зелье лечения'): Item
@@ -37,7 +43,7 @@ class LootServiceTest extends TestCase
         $entityManager = $this->createMock(EntityManagerInterface::class);
         $entityManager->expects(self::never())->method('persist');
         $entityManager->expects(self::never())->method('flush');
-        $lootService = new LootService($entityManager);
+        $lootService = $this->makeLootService($entityManager);
 
         $drops = $lootService->rollDrops($this->makeCharacter(), null);
 
@@ -62,7 +68,7 @@ class LootServiceTest extends TestCase
         // slot 2's 10% roll fails — confirming each slot is evaluated on
         // its own chance value, not a single shared roll or weighted pick.
         $rollChance = static fn (int $chance): bool => \in_array($chance, [30, 90], true);
-        $lootService = new LootService($entityManager, $rollChance);
+        $lootService = $this->makeLootService($entityManager, $rollChance);
 
         $character = $this->makeCharacter();
         $drops = $lootService->rollDrops($character, $monster);
@@ -80,7 +86,7 @@ class LootServiceTest extends TestCase
         $monster = new Monster('Голем', 1, 20);
         $monster->setDropItem1($this->makeItem())->setDropChance1(50);
 
-        $lootService = new LootService($entityManager, static fn (): bool => false);
+        $lootService = $this->makeLootService($entityManager, static fn (): bool => false);
 
         $drops = $lootService->rollDrops($this->makeCharacter(), $monster);
 
@@ -97,7 +103,7 @@ class LootServiceTest extends TestCase
         $monster->setDropItem1($this->makeItem('A'))->setDropChance1(100);
         $monster->setDropItem2($this->makeItem('B'))->setDropChance2(100);
 
-        $lootService = new LootService($entityManager, static fn (): bool => true);
+        $lootService = $this->makeLootService($entityManager, static fn (): bool => true);
         $character = $this->makeCharacter();
 
         // Fill the character's 12-cell inventory up front with unrelated
@@ -125,7 +131,7 @@ class LootServiceTest extends TestCase
         $monster = new Monster('Голем', 1, 20);
         $monster->setDropItem1($item)->setDropChance1(100);
 
-        $lootService = new LootService($entityManager, static fn (): bool => true);
+        $lootService = $this->makeLootService($entityManager, static fn (): bool => true);
         $character = $this->makeCharacter();
         $lootService->rollDrops($character, $monster);
 

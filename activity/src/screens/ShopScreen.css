@@ -9,45 +9,109 @@
   align-items: baseline;
 }
 
-.shop__list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 16px;
+.shop__header h1 {
+  margin: 0;
 }
 
-.shop__item {
+.shop__board {
+  display: flex;
+  gap: 20px;
+  margin-top: 16px;
+  align-items: flex-start;
+}
+
+.shop__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.shop__cell {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  border: 2px solid #4e5058;
+  background: #2b2d31;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.shop__cell:hover {
+  border-color: #949cf7;
+}
+
+.shop__cell--selected {
+  border-color: #949cf7;
+  box-shadow: 0 0 0 2px #949cf7;
+}
+
+.shop__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.shop__icon--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e1f22;
+  color: #949ba4;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.shop__details {
+  flex: 1;
+  min-width: 0;
   background: #2b2d31;
   border-radius: 10px;
-  padding: 12px 16px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  padding: 16px;
 }
 
-.shop__item h2 {
+.shop__details h2 {
   margin: 0 0 4px;
-  font-size: 16px;
+  font-size: 18px;
 }
 
-.shop__item p {
-  margin: 0;
-  font-size: 13px;
-  opacity: 0.75;
+.shop__type {
+  margin: 0 0 12px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
 }
 
-.shop__item button {
+.shop__description {
+  margin: 0 0 16px;
+  font-size: 14px;
+  opacity: 0.85;
+  white-space: pre-line;
+}
+
+.shop__hint {
+  opacity: 0.6;
+}
+
+.shop__buy {
   background: #5865f2;
   color: #fff;
   border: none;
   border-radius: 8px;
   padding: 8px 14px;
   cursor: pointer;
-  white-space: nowrap;
+  font-size: 13px;
 }
 
-.shop__item button:disabled {
+.shop__buy:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
