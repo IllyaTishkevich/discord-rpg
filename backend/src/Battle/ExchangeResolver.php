@@ -147,8 +147,12 @@ final class ExchangeResolver
 
     private function determineLeader(): bool
     {
-        $playerAdvantage = \count(array_filter($this->playerThrows, static fn (BitThrow $t) => $t->thrownAdvantage));
-        $opponentAdvantage = \count(array_filter($this->opponentThrows, static fn (BitThrow $t) => $t->thrownAdvantage));
+        // An Empty-showing bit never participates in the round at all — not
+        // even toward who leads it, regardless of how its advantage flag
+        // happens to be configured.
+        $countsTowardAdvantage = static fn (BitThrow $t): bool => BitFace::Empty !== $t->thrownFace && $t->thrownAdvantage;
+        $playerAdvantage = \count(array_filter($this->playerThrows, $countsTowardAdvantage));
+        $opponentAdvantage = \count(array_filter($this->opponentThrows, $countsTowardAdvantage));
 
         if ($playerAdvantage === $opponentAdvantage) {
             return ($this->randomBool)();
@@ -453,10 +457,26 @@ final class ExchangeResolver
         return ['count' => $count, 'amount' => $amount];
     }
 
+    /**
+     * Doesn't count an unused-but-Empty-showing bit — it can never be led
+     * or responded with, so it must not keep the round "still going" on its
+     * own (chooseLeadMove() would find nothing to lead with and throw). If
+     * Flip later reveals its other, real face, the next call here picks that
+     * up automatically (this re-checks thrownFace fresh every time, nothing
+     * to invalidate).
+     */
     private function remainingCount(bool $isPlayerSide): int
     {
+        $throws = $isPlayerSide ? $this->playerThrows : $this->opponentThrows;
         $used = $isPlayerSide ? $this->playerUsed : $this->opponentUsed;
 
-        return \count(array_filter($used, static fn (bool $u) => !$u));
+        $count = 0;
+        foreach ($used as $i => $isUsed) {
+            if (!$isUsed && BitFace::Empty !== $throws[$i]->thrownFace) {
+                ++$count;
+            }
+        }
+
+        return $count;
     }
 }

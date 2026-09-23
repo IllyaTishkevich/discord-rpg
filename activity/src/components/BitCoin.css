@@ -41,6 +41,13 @@
   filter: grayscale(70%);
 }
 
+/* Never plays at all this round (not merely already spent) — a dashed
+   border reads as "inert", distinct from --used's solid-but-faded look. */
+.bit-coin--empty {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
 .bit-coin__face {
   transform: rotateY(0deg);
 }

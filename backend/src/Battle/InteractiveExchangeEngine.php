@@ -94,8 +94,12 @@ final class InteractiveExchangeEngine
         $playerThrows = array_values($playerThrows);
         $opponentThrows = array_values($opponentThrows);
 
-        $playerAdvantage = \count(array_filter($playerThrows, static fn (BitThrow $t) => $t->thrownAdvantage));
-        $opponentAdvantage = \count(array_filter($opponentThrows, static fn (BitThrow $t) => $t->thrownAdvantage));
+        // An Empty-showing bit never participates in the round at all — not
+        // even toward who leads it, regardless of how its advantage flag
+        // happens to be configured.
+        $countsTowardAdvantage = static fn (BitThrow $t): bool => BitFace::Empty !== $t->thrownFace && $t->thrownAdvantage;
+        $playerAdvantage = \count(array_filter($playerThrows, $countsTowardAdvantage));
+        $opponentAdvantage = \count(array_filter($opponentThrows, $countsTowardAdvantage));
         $leaderIsPlayer = $playerAdvantage === $opponentAdvantage
             ? ($this->randomBool)()
             : $playerAdvantage > $opponentAdvantage;
@@ -417,7 +421,13 @@ final class InteractiveExchangeEngine
         }
 
         // Reject before consuming anything — a rejected move must never
-        // leave the selected bits marked used.
+        // leave the selected bits marked used. An Empty-showing bit never
+        // participates in the round at all (docs/COMBAT_V2_DESIGN.md §1),
+        // so it can never be led or responded with either.
+        if (BitFace::Empty === $face) {
+            throw new InvalidExchangeMoveException('Empty-faced bits cannot be played.');
+        }
+
         if (null !== $requiredFace && $face !== $requiredFace) {
             throw new InvalidExchangeMoveException(\sprintf('You can only respond with %s bits.', $requiredFace->value));
         }

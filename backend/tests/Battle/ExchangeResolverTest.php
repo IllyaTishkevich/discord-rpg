@@ -326,4 +326,77 @@ class ExchangeResolverTest extends TestCase
         // (not 1, which is what a literal bit-count would have given).
         self::assertSame(2, $result->damageToOpponent);
     }
+
+    // -----------------------------------------------------------------
+    // Empty face: never activates, excluded from the round entirely.
+    // -----------------------------------------------------------------
+
+    public function testEmptyBitNeverParticipatesAndTheRoundEndsCleanly(): void
+    {
+        $resolver = new ExchangeResolver();
+
+        $result = $resolver->resolveRound(
+            playerThrows: [$this->bit(BitFace::Attack, true), $this->bit(BitFace::Empty)],
+            opponentThrows: [$this->bit(BitFace::Attack)],
+            playerChoice: AbilityChoice::flip(),
+            opponentChoice: AbilityChoice::flip(),
+        );
+
+        // Player leads (advantage) with its Attack bit — its Empty bit is
+        // never a candidate to lead with. Opponent (no defense) takes the
+        // hit and keeps its own Attack bit; lead alternates, opponent leads
+        // with that Attack, player has nothing left to block with (its only
+        // remaining bit is the inert Empty one, never offered as a
+        // response) — same shape as two ordinary unanswered attacks, with
+        // the Empty bit simply never entering into it. Exactly 2 exchanges:
+        // the leftover Empty bit does NOT force a 3rd, unresolvable one.
+        self::assertCount(2, $result->exchanges);
+        self::assertSame(1, $result->damageToOpponent);
+        self::assertSame(1, $result->damageToPlayer);
+    }
+
+    public function testEmptyBitDoesNotCountTowardAdvantage(): void
+    {
+        // Tie-break forced to "player leads" if reached — the point of this
+        // test is that it must NOT be reached at all: if Empty's advantage
+        // flag counted, this would tie at 1-1; excluded correctly, it's a
+        // clean 0-1, opponent leads outright, and the injected tie-breaker
+        // is never consulted.
+        $resolver = new ExchangeResolver(static fn (): bool => true);
+
+        $result = $resolver->resolveRound(
+            playerThrows: [$this->bit(BitFace::Empty, advantage: true), $this->bit(BitFace::Defense)],
+            opponentThrows: [$this->bit(BitFace::Attack, advantage: true)],
+            playerChoice: AbilityChoice::flip(),
+            opponentChoice: AbilityChoice::flip(),
+        );
+
+        self::assertFalse($result->exchanges[0]->leaderIsPlayer, 'opponent (1 real advantage) must lead over player (0 — the Empty bit\'s advantage must not count)');
+    }
+
+    public function testFlipCanReviveAnEmptyBitByTargetingItExplicitly(): void
+    {
+        $resolver = new ExchangeResolver();
+
+        // Opponent's only bit currently shows Empty but flips to Attack.
+        $opponentEmptyBit = new BitThrow(BitFace::Empty, BitFace::Attack, false, false, BitFace::Empty, false);
+
+        $result = $resolver->resolveRound(
+            playerThrows: [$this->bit(BitFace::Action, true)],
+            opponentThrows: [$opponentEmptyBit],
+            playerChoice: AbilityChoice::flip(targets: [0]),
+            opponentChoice: AbilityChoice::flip(),
+        );
+
+        // Player leads (only bit: Action) and flips opponent's Empty bit —
+        // explicitly targeted, so it's a valid target despite showing Empty
+        // (only the *auto-fallback* target picker skips Empty/Action faces).
+        // It now shows Attack and is no longer inert: lead alternates to
+        // opponent, who leads with it for real damage — proving the bit
+        // actually rejoined the round, not just cosmetically changed face.
+        self::assertSame(BitFace::Attack, $result->opponentFaces[0]);
+        self::assertCount(2, $result->exchanges);
+        self::assertSame(0, $result->damageToOpponent);
+        self::assertSame(1, $result->damageToPlayer);
+    }
 }

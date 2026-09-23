@@ -204,6 +204,10 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
 
   function toggleOwnBit(index: number) {
     if (pendingAbilityChoice || playerUsed[index]) return;
+    // An empty-faced bit never activates — it can't be led or responded
+    // with at all (it can only ever be targeted by an opponent's Flip, via
+    // toggleFlipTarget below, which has no such restriction).
+    if (playerFaces[index] === "empty") return;
     // A response can only ever be a defense bit — never attack or action.
     if (turn === "respond" && playerFaces[index] !== "defense") return;
     setSelectedIndices((current) => {
@@ -296,6 +300,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                     turn !== "wait" &&
                     !pendingAbilityChoice &&
                     !playerUsed[index] &&
+                    face !== "empty" &&
                     (turn !== "respond" || face === "defense")
                   }
                   selected={selectedIndices.includes(index)}

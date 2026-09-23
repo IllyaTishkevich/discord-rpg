@@ -6,12 +6,14 @@ export const FACE_ICON: Record<BitFace, string> = {
   attack: "⚔️",
   defense: "🛡️",
   action: "✨",
+  empty: "➖",
 };
 
 export const FACE_LABEL: Record<BitFace, string> = {
   attack: "Удар",
   defense: "Защита",
   action: "Действие",
+  empty: "Пусто",
 };
 
 interface Props {
@@ -48,6 +50,8 @@ export function BitCoin({ face, selectable, selected, used, multiplier, onClick 
     selectable ? "bit-coin--selectable" : "",
     selected ? "bit-coin--selected" : "",
     used ? "bit-coin--used" : "",
+    // Distinct from --used: never played at all this round, not just spent.
+    face === "empty" ? "bit-coin--empty" : "",
   ]
     .filter(Boolean)
     .join(" ");

@@ -1,6 +1,8 @@
 import type { AbilityType } from "./battle";
 
-export type BitFace = "attack" | "defense" | "action";
+// "empty" never activates — a bit showing it takes no part in the round at
+// all (docs/COMBAT_V2_DESIGN.md §1).
+export type BitFace = "attack" | "defense" | "action" | "empty";
 
 export interface BitDefinition {
   faceA: BitFace;

@@ -71,11 +71,27 @@ final class ExchangeRoundState
         );
     }
 
+    /**
+     * Doesn't count an unused-but-Empty-showing bit — it can never be led
+     * or responded with, so it must not keep the round "still going" on its
+     * own (chooseLeadMove() would find nothing to lead with and throw). If
+     * Flip later reveals its other, real face, the next call here picks that
+     * up automatically (this re-checks thrownFace fresh every time, nothing
+     * to invalidate).
+     */
     public function remainingCount(bool $isPlayerSide): int
     {
+        $throws = $isPlayerSide ? $this->playerThrows : $this->opponentThrows;
         $used = $isPlayerSide ? $this->playerUsed : $this->opponentUsed;
 
-        return \count(array_filter($used, static fn (bool $u) => !$u));
+        $count = 0;
+        foreach ($used as $i => $isUsed) {
+            if (!$isUsed && BitFace::Empty !== $throws[$i]->thrownFace) {
+                ++$count;
+            }
+        }
+
+        return $count;
     }
 
     /**

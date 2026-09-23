@@ -446,4 +446,63 @@ class InteractiveExchangeEngineTest extends TestCase
         self::assertTrue($state->playerUsed[1], 'the selected index must be marked used');
         self::assertFalse($state->playerUsed[0], 'the untouched index must remain available');
     }
+
+    // -----------------------------------------------------------------
+    // Empty face: never activates, excluded from the round entirely.
+    // -----------------------------------------------------------------
+
+    public function testEmptyBitCannotBeSelectedAsALeadMove(): void
+    {
+        $engine = new InteractiveExchangeEngine(static fn (): bool => true);
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Empty, true)],
+            [$this->bit(BitFace::Attack)],
+        );
+
+        self::assertSame('lead', $engine->currentTurn($state));
+
+        $this->expectException(InvalidExchangeMoveException::class);
+        $this->expectExceptionMessage('Empty-faced bits cannot be played.');
+        $engine->submitLead($state, [0], null, AbilityChoice::flip());
+    }
+
+    public function testEmptyBitDoesNotCountTowardAdvantage(): void
+    {
+        // Tie-break forced to "player leads" if reached — this must never
+        // be reached: if Empty's advantage flag counted, this would tie at
+        // 1-1; excluded correctly, it's a clean 0-1, opponent leads outright.
+        $engine = new InteractiveExchangeEngine(static fn (): bool => true);
+        $state = $engine->startPvpRound(
+            [$this->bit(BitFace::Empty, advantage: true), $this->bit(BitFace::Defense)],
+            [$this->bit(BitFace::Attack, advantage: true)],
+        );
+
+        self::assertFalse($state->leaderIsPlayer, 'opponent (1 real advantage) must lead over player (0 — Empty\'s advantage must not count)');
+    }
+
+    public function testFlipCanReviveAnEmptyBitByTargetingItExplicitly(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        // Opponent's only bit currently shows Empty but flips to Attack.
+        $opponentEmptyBit = new BitThrow(BitFace::Empty, BitFace::Attack, false, false, BitFace::Empty, false);
+
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Action, true)],
+            [$opponentEmptyBit],
+        );
+
+        // Player leads (only bit: Action) and flips opponent's Empty bit —
+        // explicitly targeted, so it's a valid target despite showing Empty
+        // (only the *auto-fallback* target picker skips Empty/Action faces).
+        ['state' => $state] = $engine->submitLead($state, [0], AbilityChoice::flip(targets: [0]), AbilityChoice::flip());
+        self::assertSame(BitFace::Attack, $state->opponentThrows[0]->thrownFace);
+
+        // It's no longer inert — it gets its own exchange as opponent's
+        // lead once autoAdvance() runs, proving it actually rejoined the
+        // round rather than just cosmetically changing face.
+        ['exchange' => $ex2] = $engine->autoAdvance($state, AbilityChoice::flip());
+        self::assertNotNull($ex2);
+        self::assertSame(1, $ex2['damageToPlayer']);
+        self::assertSame(0, $ex2['damageToOpponent']);
+    }
 }
