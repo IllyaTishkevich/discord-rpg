@@ -214,11 +214,17 @@ class BattleService
         }
 
         $asOpponentSide = $this->requireSide($battle, $viewer);
-        $this->assertAbilityAvailable($viewer, $choice);
         $rolledActionCount = $this->abilityResolver->countActionFaces(array_map(
             BitThrow::fromArray(...),
             $asOpponentSide ? $battle->getPendingOpponentThrows() : $battle->getPendingPlayerThrows(),
         ));
+        // Only relevant if there's actually an action point to spend on it —
+        // a plain attack/defense round (0 rolled action faces) never invokes
+        // any ability, so a character shouldn't be blocked from submitting
+        // one just because it lacks some ability it isn't even trying to use.
+        if ($rolledActionCount > 0) {
+            $this->assertAbilityAvailable($viewer, $choice);
+        }
         $this->abilityResolver->assertAffordable($choice, $rolledActionCount);
 
         $battle->submitAbilityChoice($asOpponentSide, $choice->toArray());
@@ -443,7 +449,13 @@ class BattleService
         if ('over' === $turn) {
             throw new InvalidBattleStateException('This round has already been fully played out.');
         }
-        if (null !== $ability) {
+        // Only relevant if this move actually spends an action point on it
+        // (mirrors InteractiveExchangeEngine's own `BitFace::Action === $face`
+        // gate) — a plain attack/defense move, or an empty "pass" response,
+        // never touches $ability at all, so it shouldn't be blocked by a
+        // missing ability the player isn't even trying to use.
+        $selectedFace = [] !== $indices ? ($state->playerThrows[$indices[0]] ?? null)?->thrownFace : null;
+        if (null !== $ability && BitFace::Action === $selectedFace) {
             $this->assertAbilityAvailable($battle->getCharacter(), $ability);
         }
 
