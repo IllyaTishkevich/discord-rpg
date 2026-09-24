@@ -22,6 +22,14 @@ final class BitThrow
         public readonly int $multiplierA = 1,
         public readonly int $multiplierB = 1,
         public readonly int $thrownMultiplier = 1,
+        // Filename of the owning Bit's per-face icon (Bit::$iconAName/
+        // $iconBName), or null if that face has none — the frontend falls
+        // back to its generic emoji-per-face-type art in that case (see
+        // BitCoin.tsx). Travels alongside thrownFace/thrownMultiplier
+        // through flipped()/doubled() the same way.
+        public readonly ?string $iconA = null,
+        public readonly ?string $iconB = null,
+        public readonly ?string $thrownIcon = null,
     ) {
     }
 
@@ -32,6 +40,8 @@ final class BitThrow
         bool $advantageB = false,
         int $multiplierA = 1,
         int $multiplierB = 1,
+        ?string $iconA = null,
+        ?string $iconB = null,
     ): self {
         $isA = random_int(0, 1) === 0;
 
@@ -45,11 +55,14 @@ final class BitThrow
             $multiplierA,
             $multiplierB,
             $isA ? $multiplierA : $multiplierB,
+            $iconA,
+            $iconB,
+            $isA ? $iconA : $iconB,
         );
     }
 
     /**
-     * @return array{faceA: string, faceB: string, advantageA: bool, advantageB: bool, thrownFace: string, thrownAdvantage: bool, multiplierA: int, multiplierB: int, thrownMultiplier: int}
+     * @return array{faceA: string, faceB: string, advantageA: bool, advantageB: bool, thrownFace: string, thrownAdvantage: bool, multiplierA: int, multiplierB: int, thrownMultiplier: int, iconA: ?string, iconB: ?string, thrownIcon: ?string}
      */
     public function toArray(): array
     {
@@ -63,11 +76,14 @@ final class BitThrow
             'multiplierA' => $this->multiplierA,
             'multiplierB' => $this->multiplierB,
             'thrownMultiplier' => $this->thrownMultiplier,
+            'iconA' => $this->iconA,
+            'iconB' => $this->iconB,
+            'thrownIcon' => $this->thrownIcon,
         ];
     }
 
     /**
-     * @param array{faceA: string, faceB: string, advantageA?: bool, advantageB?: bool, thrownFace: string, thrownAdvantage?: bool, multiplierA?: int, multiplierB?: int, thrownMultiplier?: int} $data
+     * @param array{faceA: string, faceB: string, advantageA?: bool, advantageB?: bool, thrownFace: string, thrownAdvantage?: bool, multiplierA?: int, multiplierB?: int, thrownMultiplier?: int, iconA?: ?string, iconB?: ?string, thrownIcon?: ?string} $data
      */
     public static function fromArray(array $data): self
     {
@@ -85,6 +101,12 @@ final class BitThrow
             $data['multiplierA'] ?? 1,
             $data['multiplierB'] ?? 1,
             $data['thrownMultiplier'] ?? 1,
+            // Absent the same way for an in-flight battle predating this
+            // field — null is exactly correct there too (falls back to the
+            // generic per-face emoji on the frontend).
+            $data['iconA'] ?? null,
+            $data['iconB'] ?? null,
+            $data['thrownIcon'] ?? null,
         );
     }
 
@@ -113,6 +135,9 @@ final class BitThrow
             $this->multiplierA,
             $this->multiplierB,
             $newIsA ? $this->multiplierA : $this->multiplierB,
+            $this->iconA,
+            $this->iconB,
+            $newIsA ? $this->iconA : $this->iconB,
         );
     }
 
@@ -141,6 +166,9 @@ final class BitThrow
             $isCurrentlyA ? $this->multiplierA * 2 : $this->multiplierA,
             $isCurrentlyA ? $this->multiplierB : $this->multiplierB * 2,
             $this->thrownMultiplier * 2,
+            $this->iconA,
+            $this->iconB,
+            $this->thrownIcon,
         );
     }
 }

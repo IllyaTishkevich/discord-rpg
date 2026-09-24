@@ -103,9 +103,11 @@ final class ExchangeRoundState
      * and overshooting (more defense than the incoming attack needs) is
      * harmless, unlike stopping short.
      *
-     * @return array{count: int, amount: int} count = number of bit objects
-     *         (for marking them used), amount = sum of their multipliers
-     *         (for damage/blocking/action-points/ability-cost)
+     * @return array{count: int, amount: int, icon: ?string} count = number of
+     *         bit objects (for marking them used), amount = sum of their
+     *         multipliers (for damage/blocking/action-points/ability-cost),
+     *         icon = the first gathered bit's own art (same convention as
+     *         InteractiveExchangeEngine::validateAndConsumeMove())
      */
     public function gatherByFace(bool $isPlayerSide, BitFace $face, ?int $maxAmount = null): array
     {
@@ -114,17 +116,21 @@ final class ExchangeRoundState
 
         $count = 0;
         $amount = 0;
+        $icon = null;
         foreach ($throws as $i => $throw) {
             if (null !== $maxAmount && $amount >= $maxAmount) {
                 break;
             }
             if (!$used[$i] && $throw->thrownFace === $face) {
+                if (0 === $count) {
+                    $icon = $throw->thrownIcon;
+                }
                 ++$count;
                 $amount += $throw->thrownMultiplier;
             }
         }
 
-        return ['count' => $count, 'amount' => $amount];
+        return ['count' => $count, 'amount' => $amount, 'icon' => $icon];
     }
 
     /**

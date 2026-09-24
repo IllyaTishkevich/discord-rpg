@@ -376,13 +376,13 @@ final class ExchangeResolver
         if ($isActingSidePlayer) {
             foreach ($this->playerThrows as $i => $throw) {
                 if (!$this->playerUsed[$i]) {
-                    $this->playerThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB);
+                    $this->playerThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB, $throw->iconA, $throw->iconB);
                 }
             }
         } else {
             foreach ($this->opponentThrows as $i => $throw) {
                 if (!$this->opponentUsed[$i]) {
-                    $this->opponentThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB);
+                    $this->opponentThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB, $throw->iconA, $throw->iconB);
                 }
             }
         }

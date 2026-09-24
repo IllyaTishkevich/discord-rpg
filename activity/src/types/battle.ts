@@ -63,6 +63,7 @@ export type ExchangeTurn = "lead" | "respond" | "wait" | "over";
 export interface IncomingMove {
   face: BitFace;
   count: number;
+  icon: string | null;
 }
 
 export interface ThrowResult {
@@ -72,6 +73,11 @@ export interface ThrowResult {
   // index order as the faces above, 1 for an ordinary bit.
   playerMultipliers: number[];
   opponentMultipliers: number[];
+  // Per-bit icon filename (App\Entity\Bit::$iconAName/$iconBName), or null
+  // to fall back to the generic per-face art — same index order as the
+  // faces above (getIconUrl("bits", ...)) — see BitCoin.tsx.
+  playerIcons: (string | null)[];
+  opponentIcons: (string | null)[];
   playerActionCount: number;
   // Interactive exchange flow (docs/COMBAT_V2_DESIGN.md §7-8) — populated
   // for PvE/event and PvP alike.
@@ -140,6 +146,8 @@ export interface ExchangeMoveResponse {
   opponentUsed: boolean[];
   playerMultipliers: number[];
   opponentMultipliers: number[];
+  playerIcons: (string | null)[];
+  opponentIcons: (string | null)[];
   round?: RoundResult;
   turn?: ExchangeTurn;
   incomingMove?: IncomingMove | null;

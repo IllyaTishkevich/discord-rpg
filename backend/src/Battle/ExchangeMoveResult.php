@@ -24,6 +24,10 @@ final class ExchangeMoveResult
      * @param bool[]                                 $playerUsed        which indices have already been activated this
      *                                                                  round and can no longer be selected
      * @param bool[]                                 $opponentUsed
+     * @param (?string)[]                            $playerIcons       per-index icon filename (BitThrow::$thrownIcon)
+     *                                                                  or null to fall back to the generic per-face
+     *                                                                  art — same index order as the faces above
+     * @param (?string)[]                            $opponentIcons
      * @param array{face: string, count: int}|null   $incomingMove
      */
     public function __construct(
@@ -35,6 +39,8 @@ final class ExchangeMoveResult
         public readonly array $opponentUsed,
         public readonly array $playerMultipliers = [],
         public readonly array $opponentMultipliers = [],
+        public readonly array $playerIcons = [],
+        public readonly array $opponentIcons = [],
         public readonly ?BattleRound $round = null,
         public readonly ?string $turn = null,
         public readonly ?array $incomingMove = null,

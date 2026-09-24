@@ -27,10 +27,14 @@ interface Props {
   // Damage/blocking/action-points this face is worth — omitted or 1 for an
   // ordinary bit, in which case no badge is shown at all.
   multiplier?: number;
+  // The owning Bit's own art for this face (App\Entity\Bit::$iconAName/
+  // $iconBName, via getIconUrl("bits", ...)) — omitted or null falls back
+  // to the generic FACE_ICON emoji, same as always.
+  iconUrl?: string | null;
   onClick?: () => void;
 }
 
-export function BitCoin({ face, selectable, selected, used, multiplier, onClick }: Props) {
+export function BitCoin({ face, selectable, selected, used, multiplier, iconUrl, onClick }: Props) {
   const [flipped, setFlipped] = useState(false);
 
   useEffect(() => {
@@ -66,7 +70,10 @@ export function BitCoin({ face, selectable, selected, used, multiplier, onClick 
       disabled={!selectable}
       title={face ? (hasMultiplier ? `${FACE_LABEL[face]} ×${multiplier}` : FACE_LABEL[face]) : "?"}
     >
-      <span className="bit-coin__face">{face ? FACE_ICON[face] : "?"}</span>
+      <span className="bit-coin__sheen" aria-hidden="true" />
+      <span className="bit-coin__face">
+        {face && iconUrl ? <img className="bit-coin__image" src={iconUrl} alt="" /> : face ? FACE_ICON[face] : "?"}
+      </span>
       {hasMultiplier && <span className="bit-coin__multiplier">×{multiplier}</span>}
     </button>
   );

@@ -45,7 +45,7 @@ class InteractiveExchangeEngineTest extends TestCase
         );
 
         self::assertSame('respond', $engine->currentTurn($state));
-        self::assertSame(['face' => 'attack', 'count' => 1], $engine->getIncomingMove($state));
+        self::assertSame(['face' => 'attack', 'count' => 1, 'icon' => null], $engine->getIncomingMove($state));
 
         ['state' => $state, 'exchange' => $exchange] = $engine->submitRespond($state, [0]);
 
@@ -312,7 +312,7 @@ class InteractiveExchangeEngineTest extends TestCase
 
         $state = $engine->submitPvpLead($state, true, [0], null);
 
-        self::assertSame(['face' => 'attack', 'count' => 1, 'bonus' => 0], $state->pendingLeaderMove);
+        self::assertSame(['face' => 'attack', 'count' => 1, 'bonus' => 0, 'icon' => null], $state->pendingLeaderMove);
         self::assertSame('respond', $engine->turnForSide($state, false));
         self::assertSame('wait', $engine->turnForSide($state, true));
     }

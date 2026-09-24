@@ -192,12 +192,12 @@ final class InteractiveExchangeEngine
         }
 
         $state->leaderIsPlayer = $isPlayerSide;
-        ['face' => $face, 'amount' => $amount] = $this->validateAndConsumeMove($state, $isPlayerSide, $indices);
+        ['face' => $face, 'amount' => $amount, 'icon' => $icon] = $this->validateAndConsumeMove($state, $isPlayerSide, $indices);
         $bonus = BitFace::Action === $face
             ? $this->applyActionAbility($state, $isPlayerSide, $amount, $ability ?? AbilityChoice::flip())
             : 0;
 
-        $state->pendingLeaderMove = ['face' => $face->value, 'count' => $amount, 'bonus' => $bonus];
+        $state->pendingLeaderMove = ['face' => $face->value, 'count' => $amount, 'bonus' => $bonus, 'icon' => $icon];
 
         return $state;
     }
@@ -274,7 +274,7 @@ final class InteractiveExchangeEngine
     }
 
     /**
-     * @return array{face: string, count: int}|null the bot's already-committed move, if it's the player's turn to respond
+     * @return array{face: string, count: int, icon: ?string}|null the bot's already-committed move, if it's the player's turn to respond
      */
     public function getIncomingMove(ExchangeRoundState $state): ?array
     {
@@ -282,7 +282,14 @@ final class InteractiveExchangeEngine
             return null;
         }
 
-        return ['face' => $state->pendingLeaderMove['face'], 'count' => $state->pendingLeaderMove['count']];
+        return [
+            'face' => $state->pendingLeaderMove['face'],
+            'count' => $state->pendingLeaderMove['count'],
+            // Absent for a pendingLeaderMove persisted before this field
+            // existed (an in-flight battle at deploy time) — null falls
+            // back to the generic per-face emoji, same as everywhere else.
+            'icon' => $state->pendingLeaderMove['icon'] ?? null,
+        ];
     }
 
     /**
@@ -397,6 +404,7 @@ final class InteractiveExchangeEngine
                 'face' => $leaderMove['face']->value,
                 'count' => $leaderMove['amount'],
                 'bonus' => $leaderBonus,
+                'icon' => $leaderMove['icon'],
             ];
 
             return ['state' => $state, 'exchange' => null];
@@ -412,7 +420,7 @@ final class InteractiveExchangeEngine
     /**
      * @param int[] $indices
      *
-     * @return array{face: BitFace, amount: int}
+     * @return array{face: BitFace, amount: int, icon: ?string}
      */
     private function validateAndConsumeMove(ExchangeRoundState $state, bool $isPlayerSide, array $indices, ?BitFace $requiredFace = null): array
     {
@@ -425,6 +433,10 @@ final class InteractiveExchangeEngine
 
         $face = null;
         $amount = 0;
+        // The first selected bit's own art represents the whole group in the
+        // UI (Activity's stage circle) — same convention as the frontend's
+        // own aggregateMove() uses for a group the player picks themselves.
+        $icon = null;
         $uniqueIndices = array_unique($indices);
         foreach ($uniqueIndices as $index) {
             if (!isset($throws[$index]) || ($used[$index] ?? true)) {
@@ -432,6 +444,7 @@ final class InteractiveExchangeEngine
             }
             if (null === $face) {
                 $face = $throws[$index]->thrownFace;
+                $icon = $throws[$index]->thrownIcon;
             } elseif ($face !== $throws[$index]->thrownFace) {
                 throw new InvalidExchangeMoveException('All selected bits must show the same face.');
             }
@@ -466,7 +479,7 @@ final class InteractiveExchangeEngine
             }
         }
 
-        return ['face' => $face, 'amount' => $amount];
+        return ['face' => $face, 'amount' => $amount, 'icon' => $icon];
     }
 
     /**
@@ -477,7 +490,7 @@ final class InteractiveExchangeEngine
         foreach ([BitFace::Attack, BitFace::Action, BitFace::Defense] as $face) {
             $gathered = $state->gatherByFace($isPlayerSide, $face);
             if ($gathered['count'] > 0) {
-                return ['face' => $face, 'count' => $gathered['count'], 'amount' => $gathered['amount']];
+                return ['face' => $face, 'count' => $gathered['count'], 'amount' => $gathered['amount'], 'icon' => $gathered['icon']];
             }
         }
 
@@ -726,13 +739,13 @@ final class InteractiveExchangeEngine
         if ($isActingSidePlayer) {
             foreach ($state->playerThrows as $i => $throw) {
                 if (!$state->playerUsed[$i]) {
-                    $state->playerThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB);
+                    $state->playerThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB, $throw->iconA, $throw->iconB);
                 }
             }
         } else {
             foreach ($state->opponentThrows as $i => $throw) {
                 if (!$state->opponentUsed[$i]) {
-                    $state->opponentThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB);
+                    $state->opponentThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB, $throw->iconA, $throw->iconB);
                 }
             }
         }

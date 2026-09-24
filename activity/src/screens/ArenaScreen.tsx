@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, MutableRefObject } from "react";
 import { fetchAbilities } from "../api/abilities";
 import { fetchBattle, fetchLatestRound, submitExchangeMove, throwRound } from "../api/battles";
+import { getIconUrl } from "../api/client";
 import { BitCoin, FACE_LABEL } from "../components/BitCoin";
 import { CombatantBar } from "../components/CombatantBar";
 import { TurnTimer } from "../components/TurnTimer";
@@ -62,6 +63,12 @@ function describeExchange(exchange: Exchange): string {
   return `${leaderLabel}: ${leaderMove} → ${responderLabel}: ${responderMove} — ${damageText}`;
 }
 
+// getIconUrl("bits", ...) for a possibly-absent per-bit icon — null/undefined
+// falls through to null, letting BitCoin fall back to its generic emoji.
+function bitIconUrl(icon: string | null | undefined): string | null {
+  return icon ? getIconUrl("bits", icon) : null;
+}
+
 // One side's currently-showing move in its stage circle — either still
 // resting there after just resolving (cleared once its fly-to-log
 // animation lands, see scheduleCircleToLog) or, for the opponent, a
@@ -70,16 +77,20 @@ function describeExchange(exchange: Exchange): string {
 interface StageMove {
   face: BitFace;
   count: number;
+  icon: string | null;
 }
 
 // Summarizes a group of same-face bits (by index) into one circle-ready
 // move — count is the sum of their multipliers, matching how a real
-// exchange's leaderCount/responderCount already represents a whole group.
-function aggregateMove(indices: number[], faces: BitFace[], multipliers: number[]): StageMove | null {
+// exchange's leaderCount/responderCount already represents a whole group;
+// icon is the first bit's own art (same convention the backend uses when
+// building pendingLeaderMove server-side).
+function aggregateMove(indices: number[], faces: BitFace[], multipliers: number[], icons: (string | null)[]): StageMove | null {
   if (indices.length === 0) return null;
   return {
     face: faces[indices[0]],
     count: indices.reduce((sum, index) => sum + (multipliers[index] ?? 1), 0),
+    icon: icons[indices[0]] ?? null,
   };
 }
 
@@ -90,6 +101,7 @@ interface FlyingBit {
   id: string;
   face: BitFace;
   multiplier: number;
+  icon: string | null;
   from: DOMRect;
   to: DOMRect;
 }
@@ -122,7 +134,7 @@ function FlyingBitCoin({ bit }: { bit: FlyingBit }) {
 
   return (
     <div style={style}>
-      <BitCoin face={bit.face} multiplier={bit.multiplier} />
+      <BitCoin face={bit.face} multiplier={bit.multiplier} iconUrl={bitIconUrl(bit.icon)} />
     </div>
   );
 }
@@ -137,6 +149,7 @@ function poolToCircleFlights(
   indices: number[],
   faces: BitFace[],
   multipliers: number[],
+  icons: (string | null)[],
   refs: MutableRefObject<Record<number, HTMLDivElement | null>>,
   circleEl: HTMLDivElement | null,
 ): FlyingBit[] {
@@ -150,6 +163,7 @@ function poolToCircleFlights(
       id: `in-${index}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       face: faces[index],
       multiplier: multipliers[index] ?? 1,
+      icon: icons[index] ?? null,
       from: el.getBoundingClientRect(),
       to,
     });
@@ -181,6 +195,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   const [opponentUsed, setOpponentUsed] = useState<boolean[]>([]);
   const [playerMultipliers, setPlayerMultipliers] = useState<number[]>([]);
   const [opponentMultipliers, setOpponentMultipliers] = useState<number[]>([]);
+  const [playerIcons, setPlayerIcons] = useState<(string | null)[]>([]);
+  const [opponentIcons, setOpponentIcons] = useState<(string | null)[]>([]);
   const [turn, setTurn] = useState<ExchangeTurn | null>(null);
   const [incomingMove, setIncomingMove] = useState<IncomingMove | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
@@ -255,6 +271,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     indices: number[],
     faces: BitFace[],
     multipliers: number[],
+    icons: (string | null)[],
     restingMove: StageMove | null,
   ) {
     if (indices.length === 0) return;
@@ -275,6 +292,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
           id: `out-${side}-${index}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           face: faces[index],
           multiplier: multipliers[index] ?? 1,
+          icon: icons[index] ?? null,
           from,
           to,
         })),
@@ -286,12 +304,12 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     }, CIRCLE_REST_MS);
   }
 
-  // Applies a fresh used/faces/multipliers snapshot for both sides. Bits
-  // newly used without already being staged in the circle (the opponent's
-  // side, always — the player's own only as a fallback, see toggleOwnBit)
-  // fly pool → circle first; each side's newly-used group then becomes its
-  // resting move (shown in the circle) and, after a beat, flies on to its
-  // log panel via scheduleCircleToLog, which empties the circle again.
+  // Applies a fresh used/faces/multipliers/icons snapshot for both sides.
+  // Bits newly used without already being staged in the circle (the
+  // opponent's side, always — the player's own only as a fallback, see
+  // toggleOwnBit) fly pool → circle first; each side's newly-used group then
+  // becomes its resting move (shown in the circle) and, after a beat, flies
+  // on to its log panel via scheduleCircleToLog, which empties the circle again.
   function applyExchangeSnapshot(next: {
     playerFaces: BitFace[];
     opponentFaces: BitFace[];
@@ -299,6 +317,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     opponentUsed: boolean[];
     playerMultipliers: number[];
     opponentMultipliers: number[];
+    playerIcons: (string | null)[];
+    opponentIcons: (string | null)[];
   }) {
     const playerNewlyUsed: number[] = [];
     next.playerUsed.forEach((used, index) => {
@@ -309,18 +329,25 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       if (used && !lastOpponentUsedRef.current[index]) opponentNewlyUsed.push(index);
     });
 
-    const playerMove = aggregateMove(playerNewlyUsed, next.playerFaces, next.playerMultipliers);
-    const opponentMove = aggregateMove(opponentNewlyUsed, next.opponentFaces, next.opponentMultipliers);
+    const playerMove = aggregateMove(playerNewlyUsed, next.playerFaces, next.playerMultipliers, next.playerIcons);
+    const opponentMove = aggregateMove(opponentNewlyUsed, next.opponentFaces, next.opponentMultipliers, next.opponentIcons);
     if (playerMove) setPlayerRestingMove(playerMove);
     if (opponentMove) setOpponentRestingMove(opponentMove);
 
     const playerNeedingFlyIn = playerNewlyUsed.filter((index) => !selectedIndices.includes(index));
     spawnFlyingBits([
-      ...poolToCircleFlights(playerNeedingFlyIn, next.playerFaces, next.playerMultipliers, playerPoolRefs, playerCircleRef.current),
-      ...poolToCircleFlights(opponentNewlyUsed, next.opponentFaces, next.opponentMultipliers, opponentPoolRefs, opponentCircleRef.current),
+      ...poolToCircleFlights(playerNeedingFlyIn, next.playerFaces, next.playerMultipliers, next.playerIcons, playerPoolRefs, playerCircleRef.current),
+      ...poolToCircleFlights(
+        opponentNewlyUsed,
+        next.opponentFaces,
+        next.opponentMultipliers,
+        next.opponentIcons,
+        opponentPoolRefs,
+        opponentCircleRef.current,
+      ),
     ]);
-    scheduleCircleToLog("player", playerNewlyUsed, next.playerFaces, next.playerMultipliers, playerMove);
-    scheduleCircleToLog("opponent", opponentNewlyUsed, next.opponentFaces, next.opponentMultipliers, opponentMove);
+    scheduleCircleToLog("player", playerNewlyUsed, next.playerFaces, next.playerMultipliers, next.playerIcons, playerMove);
+    scheduleCircleToLog("opponent", opponentNewlyUsed, next.opponentFaces, next.opponentMultipliers, next.opponentIcons, opponentMove);
 
     lastPlayerUsedRef.current = next.playerUsed;
     lastOpponentUsedRef.current = next.opponentUsed;
@@ -330,6 +357,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     setOpponentUsed(next.opponentUsed);
     setPlayerMultipliers(next.playerMultipliers);
     setOpponentMultipliers(next.opponentMultipliers);
+    setPlayerIcons(next.playerIcons);
+    setOpponentIcons(next.opponentIcons);
   }
 
   useEffect(() => {
@@ -358,6 +387,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setOpponentRestingMove(null);
       setPlayerMultipliers(result.playerMultipliers);
       setOpponentMultipliers(result.opponentMultipliers);
+      setPlayerIcons(result.playerIcons);
+      setOpponentIcons(result.opponentIcons);
       setTurn(result.turn);
       setIncomingMove(result.incomingMove);
       setExchangeLog([]);
@@ -430,6 +461,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
             opponentUsed: updated.exchange.opponentUsed ?? [],
             playerMultipliers: updated.exchange.playerMultipliers,
             opponentMultipliers: updated.exchange.opponentMultipliers,
+            playerIcons: updated.exchange.playerIcons,
+            opponentIcons: updated.exchange.opponentIcons,
           });
           setTurn(updated.exchange.turn);
           setIncomingMove(updated.exchange.incomingMove);
@@ -476,6 +509,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
           opponentUsed: updated.exchange.opponentUsed ?? [],
           playerMultipliers: updated.exchange.playerMultipliers,
           opponentMultipliers: updated.exchange.opponentMultipliers,
+          playerIcons: updated.exchange.playerIcons,
+          opponentIcons: updated.exchange.opponentIcons,
         });
         setTurn(updated.exchange.turn);
         setIncomingMove(updated.exchange.incomingMove);
@@ -519,6 +554,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
             id: `select-${index}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             face: playerFaces[index],
             multiplier: playerMultipliers[index] ?? 1,
+            icon: playerIcons[index] ?? null,
             from: el.getBoundingClientRect(),
             to: circleEl.getBoundingClientRect(),
           },
@@ -578,7 +614,9 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   // The opponent's own incoming lead (not yet resolved, still awaiting the
   // player's response) always takes priority over a merely-resting past
   // move — it's live and more current than anything already sitting there.
-  const opponentCircleMove: StageMove | null = incomingMove ? { face: incomingMove.face, count: incomingMove.count } : opponentRestingMove;
+  const opponentCircleMove: StageMove | null = incomingMove
+    ? { face: incomingMove.face, count: incomingMove.count, icon: incomingMove.icon }
+    : opponentRestingMove;
 
   return (
     <div className="arena">
@@ -613,6 +651,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                     <BitCoin
                       face={face}
                       multiplier={opponentMultipliers[index]}
+                      iconUrl={bitIconUrl(opponentIcons[index])}
                       selectable={pendingAbilityChoice && selectedAbility === "flip"}
                       selected={flipTargets.includes(index)}
                       onClick={() => toggleFlipTarget(index)}
@@ -631,7 +670,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                     opponentUsed[index] &&
                     opponentLogRevealed[index] && (
                       <div className="arena__log-coin" key={index}>
-                        <BitCoin face={face} multiplier={opponentMultipliers[index]} used />
+                        <BitCoin face={face} multiplier={opponentMultipliers[index]} iconUrl={bitIconUrl(opponentIcons[index])} used />
                       </div>
                     ),
                 )}
@@ -642,7 +681,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                     playerUsed[index] &&
                     playerLogRevealed[index] && (
                       <div className="arena__log-coin" key={index}>
-                        <BitCoin face={face} multiplier={playerMultipliers[index]} used />
+                        <BitCoin face={face} multiplier={playerMultipliers[index]} iconUrl={bitIconUrl(playerIcons[index])} used />
                       </div>
                     ),
                 )}
@@ -652,7 +691,12 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
             <div className="arena__stage-circles">
               <div ref={opponentCircleRef} className="arena__stage-circle arena__stage-circle--opponent">
                 {opponentCircleMove && (
-                  <BitCoin key={`${opponentCircleMove.face}-${opponentCircleMove.count}`} face={opponentCircleMove.face} multiplier={opponentCircleMove.count} />
+                  <BitCoin
+                    key={`${opponentCircleMove.face}-${opponentCircleMove.count}`}
+                    face={opponentCircleMove.face}
+                    multiplier={opponentCircleMove.count}
+                    iconUrl={bitIconUrl(opponentCircleMove.icon)}
+                  />
                 )}
               </div>
               <div ref={playerCircleRef} className="arena__stage-circle arena__stage-circle--player">
@@ -663,11 +707,16 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                         key={index}
                         style={{ zIndex: i, transform: `translate(${i * 6}px, ${i * -6}px)` }}
                       >
-                        <BitCoin face={playerFaces[index]} multiplier={playerMultipliers[index]} />
+                        <BitCoin face={playerFaces[index]} multiplier={playerMultipliers[index]} iconUrl={bitIconUrl(playerIcons[index])} />
                       </div>
                     ))
                   : playerRestingMove && (
-                      <BitCoin key={`${playerRestingMove.face}-${playerRestingMove.count}`} face={playerRestingMove.face} multiplier={playerRestingMove.count} />
+                      <BitCoin
+                        key={`${playerRestingMove.face}-${playerRestingMove.count}`}
+                        face={playerRestingMove.face}
+                        multiplier={playerRestingMove.count}
+                        iconUrl={bitIconUrl(playerRestingMove.icon)}
+                      />
                     )}
               </div>
             </div>
@@ -698,6 +747,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                       <BitCoin
                         face={face}
                         multiplier={playerMultipliers[index]}
+                        iconUrl={bitIconUrl(playerIcons[index])}
                         selectable={turn !== "wait" && face !== "empty" && (turn !== "respond" || face === "defense")}
                         onClick={() => toggleOwnBit(index)}
                       />
