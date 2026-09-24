@@ -90,6 +90,10 @@ interface FlyingBit {
 }
 
 const FLIGHT_DURATION_MS = 450;
+// How long a resolved move sits visibly in the stage circle before flying
+// on to the used-bit log panel — gives the player a beat to register what
+// just happened instead of it vanishing into the log instantly.
+const CIRCLE_REST_MS = 500;
 
 function FlyingBitCoin({ bit }: { bit: FlyingBit }) {
   const [arrived, setArrived] = useState(false);
@@ -118,34 +122,33 @@ function FlyingBitCoin({ bit }: { bit: FlyingBit }) {
   );
 }
 
-// Diffs a used[] array before/after a move against the pool's last known DOM
-// positions (via `refs`) to spawn one FlyingBit per bit that just became
-// used — i.e. was just played into `circleEl` (the matching side's stage
-// circle). Must be called BEFORE the setPlayerUsed/setOpponentUsed calls
-// that would otherwise unmount those bits from the pool.
-function flyingBitsFor(
-  prevUsed: boolean[],
-  nextUsed: boolean[],
+// Flies each of `indices` from its last known pool position (via `refs`)
+// into `circleEl` (the matching side's stage circle). Used for bits that
+// become played without having gone through the player's own pre-confirm
+// selection flight (see toggleOwnBit) — the opponent/bot's side always,
+// and the player's own side only as a fallback should it ever become used
+// without being staged first.
+function poolToCircleFlights(
+  indices: number[],
   faces: BitFace[],
   multipliers: number[],
   refs: MutableRefObject<Record<number, HTMLDivElement | null>>,
   circleEl: HTMLDivElement | null,
 ): FlyingBit[] {
-  if (!circleEl) return [];
+  if (!circleEl || indices.length === 0) return [];
   const to = circleEl.getBoundingClientRect();
   const entries: FlyingBit[] = [];
-  nextUsed.forEach((used, index) => {
-    if (!used || prevUsed[index]) return;
+  for (const index of indices) {
     const el = refs.current[index];
-    if (!el) return;
+    if (!el) continue;
     entries.push({
-      id: `${index}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      id: `in-${index}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       face: faces[index],
       multiplier: multipliers[index] ?? 1,
       from: el.getBoundingClientRect(),
       to,
     });
-  });
+  }
   return entries;
 }
 
@@ -193,12 +196,19 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   const playerPoolRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const opponentCircleRef = useRef<HTMLDivElement | null>(null);
   const playerCircleRef = useRef<HTMLDivElement | null>(null);
+  const opponentLogPanelRef = useRef<HTMLDivElement | null>(null);
+  const playerLogPanelRef = useRef<HTMLDivElement | null>(null);
   // The last used[] arrays actually applied to state, tracked outside React
-  // state so flyingBitsFor() always diffs against a true "previous" value —
-  // reading playerUsed/opponentUsed state directly would go stale inside the
-  // PvP poll's setInterval closure across repeated ticks.
+  // state so applyExchangeSnapshot() always diffs against a true "previous"
+  // value — reading playerUsed/opponentUsed state directly would go stale
+  // inside the PvP poll's setInterval closure across repeated ticks.
   const lastPlayerUsedRef = useRef<boolean[]>([]);
   const lastOpponentUsedRef = useRef<boolean[]>([]);
+  // A used bit only appears in its log panel once "revealed" — i.e. once
+  // its circle → log flight (scheduleCircleToLog below) has landed. Parallel
+  // to playerUsed/opponentUsed, but lags behind them during that flight.
+  const [playerLogRevealed, setPlayerLogRevealed] = useState<boolean[]>([]);
+  const [opponentLogRevealed, setOpponentLogRevealed] = useState<boolean[]>([]);
 
   function spawnFlyingBits(entries: FlyingBit[]) {
     if (entries.length === 0) return;
@@ -208,8 +218,49 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     }, FLIGHT_DURATION_MS);
   }
 
-  // Applies a fresh used/faces/multipliers snapshot for both sides, flying
-  // any newly-used bits into their side's stage circle first.
+  function revealInLog(side: "player" | "opponent", indices: number[]) {
+    const setRevealed = side === "player" ? setPlayerLogRevealed : setOpponentLogRevealed;
+    setRevealed((current) => {
+      const next = [...current];
+      for (const index of indices) next[index] = true;
+      return next;
+    });
+  }
+
+  // After a short rest in the stage circle, flies `indices` on to their
+  // side's log panel and only then marks them revealed there. Rects are
+  // captured at fire time (not schedule time), and the whole thing degrades
+  // to an instant, unanimated reveal if the board has since unmounted (e.g.
+  // the round resolved while this was pending) — see isConnected below.
+  function scheduleCircleToLog(side: "player" | "opponent", indices: number[], faces: BitFace[], multipliers: number[]) {
+    if (indices.length === 0) return;
+    window.setTimeout(() => {
+      const circleEl = (side === "player" ? playerCircleRef : opponentCircleRef).current;
+      const logEl = (side === "player" ? playerLogPanelRef : opponentLogPanelRef).current;
+      if (!circleEl?.isConnected || !logEl?.isConnected) {
+        revealInLog(side, indices);
+        return;
+      }
+      const from = circleEl.getBoundingClientRect();
+      const to = logEl.getBoundingClientRect();
+      spawnFlyingBits(
+        indices.map((index) => ({
+          id: `out-${side}-${index}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          face: faces[index],
+          multiplier: multipliers[index] ?? 1,
+          from,
+          to,
+        })),
+      );
+      window.setTimeout(() => revealInLog(side, indices), FLIGHT_DURATION_MS);
+    }, CIRCLE_REST_MS);
+  }
+
+  // Applies a fresh used/faces/multipliers snapshot for both sides. Bits
+  // newly used without already being staged in the circle (the opponent's
+  // side, always — the player's own only as a fallback, see toggleOwnBit)
+  // fly pool → circle first; every newly-used bit then rests briefly and
+  // flies on to its log panel via scheduleCircleToLog.
   function applyExchangeSnapshot(next: {
     playerFaces: BitFace[];
     opponentFaces: BitFace[];
@@ -218,17 +269,23 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     playerMultipliers: number[];
     opponentMultipliers: number[];
   }) {
+    const playerNewlyUsed: number[] = [];
+    next.playerUsed.forEach((used, index) => {
+      if (used && !lastPlayerUsedRef.current[index]) playerNewlyUsed.push(index);
+    });
+    const opponentNewlyUsed: number[] = [];
+    next.opponentUsed.forEach((used, index) => {
+      if (used && !lastOpponentUsedRef.current[index]) opponentNewlyUsed.push(index);
+    });
+
+    const playerNeedingFlyIn = playerNewlyUsed.filter((index) => !selectedIndices.includes(index));
     spawnFlyingBits([
-      ...flyingBitsFor(lastPlayerUsedRef.current, next.playerUsed, next.playerFaces, next.playerMultipliers, playerPoolRefs, playerCircleRef.current),
-      ...flyingBitsFor(
-        lastOpponentUsedRef.current,
-        next.opponentUsed,
-        next.opponentFaces,
-        next.opponentMultipliers,
-        opponentPoolRefs,
-        opponentCircleRef.current,
-      ),
+      ...poolToCircleFlights(playerNeedingFlyIn, next.playerFaces, next.playerMultipliers, playerPoolRefs, playerCircleRef.current),
+      ...poolToCircleFlights(opponentNewlyUsed, next.opponentFaces, next.opponentMultipliers, opponentPoolRefs, opponentCircleRef.current),
     ]);
+    scheduleCircleToLog("player", playerNewlyUsed, next.playerFaces, next.playerMultipliers);
+    scheduleCircleToLog("opponent", opponentNewlyUsed, next.opponentFaces, next.opponentMultipliers);
+
     lastPlayerUsedRef.current = next.playerUsed;
     lastOpponentUsedRef.current = next.opponentUsed;
     setPlayerFaces(next.playerFaces);
@@ -259,6 +316,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setOpponentFaces(result.opponentFaces);
       setPlayerUsed(lastPlayerUsedRef.current);
       setOpponentUsed(lastOpponentUsedRef.current);
+      setPlayerLogRevealed(result.playerFaces.map(() => false));
+      setOpponentLogRevealed(result.opponentFaces.map(() => false));
       setPlayerMultipliers(result.playerMultipliers);
       setOpponentMultipliers(result.opponentMultipliers);
       setTurn(result.turn);
@@ -408,6 +467,27 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     if (playerFaces[index] === "empty") return;
     // A response can only ever be a defense bit — never attack or action.
     if (turn === "respond" && playerFaces[index] !== "defense") return;
+
+    // Selecting (not deselecting) flies the bit from its pool slot into the
+    // player's stage circle right away, instead of just outlining it in
+    // place — it visually stays there, staged, until the move is confirmed
+    // (or the selection changes) — see the player circle's render below.
+    if (!selectedIndices.includes(index)) {
+      const el = playerPoolRefs.current[index];
+      const circleEl = playerCircleRef.current;
+      if (el && circleEl) {
+        spawnFlyingBits([
+          {
+            id: `select-${index}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            face: playerFaces[index],
+            multiplier: playerMultipliers[index] ?? 1,
+            from: el.getBoundingClientRect(),
+            to: circleEl.getBoundingClientRect(),
+          },
+        ]);
+      }
+    }
+
     setSelectedIndices((current) => {
       if (current.includes(index)) {
         return current.filter((i) => i !== index);
@@ -505,20 +585,22 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
 
           <div className="arena__stage">
             <div className="arena__stage-logs">
-              <div className="arena__log-panel arena__log-panel--opponent">
+              <div ref={opponentLogPanelRef} className="arena__log-panel arena__log-panel--opponent">
                 {opponentFaces.map(
                   (face, index) =>
-                    opponentUsed[index] && (
+                    opponentUsed[index] &&
+                    opponentLogRevealed[index] && (
                       <div className="arena__log-coin" key={index}>
                         <BitCoin face={face} multiplier={opponentMultipliers[index]} used />
                       </div>
                     ),
                 )}
               </div>
-              <div className="arena__log-panel arena__log-panel--player">
+              <div ref={playerLogPanelRef} className="arena__log-panel arena__log-panel--player">
                 {playerFaces.map(
                   (face, index) =>
-                    playerUsed[index] && (
+                    playerUsed[index] &&
+                    playerLogRevealed[index] && (
                       <div className="arena__log-coin" key={index}>
                         <BitCoin face={face} multiplier={playerMultipliers[index]} used />
                       </div>
@@ -532,7 +614,17 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                 {opponentStageMove && <BitCoin key={exchangeLog.length} face={opponentStageMove.face} multiplier={opponentStageMove.count} />}
               </div>
               <div ref={playerCircleRef} className="arena__stage-circle arena__stage-circle--player">
-                {playerStageMove && <BitCoin key={exchangeLog.length} face={playerStageMove.face} multiplier={playerStageMove.count} />}
+                {selectedIndices.length > 0
+                  ? selectedIndices.map((index, i) => (
+                      <div
+                        className="arena__staged-coin"
+                        key={index}
+                        style={{ zIndex: i, transform: `translate(${i * 6}px, ${i * -6}px)` }}
+                      >
+                        <BitCoin face={playerFaces[index]} multiplier={playerMultipliers[index]} />
+                      </div>
+                    ))
+                  : playerStageMove && <BitCoin key={exchangeLog.length} face={playerStageMove.face} multiplier={playerStageMove.count} />}
               </div>
             </div>
 
@@ -552,7 +644,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
               <div className="arena__coins">
                 {playerFaces.map(
                   (face, index) =>
-                    !playerUsed[index] && (
+                    !playerUsed[index] &&
+                    !selectedIndices.includes(index) && (
                       <div
                         ref={(el) => {
                           playerPoolRefs.current[index] = el;
@@ -563,7 +656,6 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                           face={face}
                           multiplier={playerMultipliers[index]}
                           selectable={turn !== "wait" && face !== "empty" && (turn !== "respond" || face === "defense")}
-                          selected={selectedIndices.includes(index)}
                           onClick={() => toggleOwnBit(index)}
                         />
                       </div>

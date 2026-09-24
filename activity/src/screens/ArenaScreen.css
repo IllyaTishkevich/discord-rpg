@@ -107,6 +107,7 @@
 }
 
 .arena__stage-circle {
+  position: relative;
   width: 64px;
   height: 64px;
   border-radius: 50%;
@@ -122,6 +123,16 @@
 
 .arena__stage-circle--player {
   border-color: rgba(242, 63, 66, 0.6);
+}
+
+/* A bit staged in the player's circle pre-confirm — several can stack here
+   at once (one per selected bit), fanned out via an inline transform. */
+.arena__staged-coin {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .arena__hint {
