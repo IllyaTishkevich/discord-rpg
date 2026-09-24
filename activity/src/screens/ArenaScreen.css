@@ -35,6 +35,15 @@
   gap: 12px;
 }
 
+/* A fixed-footprint cell in the pool grid — kept even once its bit is used
+   or selected away (rendering nothing inside), so the remaining bits don't
+   reflow into the gap: the empty cell reads as "this is where that bit
+   came from", not just a shrinking list. */
+.arena__pool-slot {
+  width: 56px;
+  height: 56px;
+}
+
 .arena__pool {
   border-radius: 10px;
   padding: 12px 14px;
