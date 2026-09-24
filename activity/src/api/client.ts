@@ -22,7 +22,7 @@ const BASE_URL = isEmbeddedInDiscord ? "/.proxy/api" : (import.meta.env.VITE_BAC
  * a *second*, separately-configured mapping for a bare /uploads prefix to
  * also exist and work inside the real Discord client.
  */
-export function getIconUrl(directory: "monsters" | "bits" | "classes" | "abilities" | "equipment" | "items", filename: string): string {
+export function getIconUrl(directory: "monsters" | "bits" | "classes" | "abilities" | "equipment" | "items" | "frames", filename: string): string {
   return `${BASE_URL}/uploads/${directory}/${filename}`;
 }
 

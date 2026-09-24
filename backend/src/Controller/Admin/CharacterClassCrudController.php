@@ -50,6 +50,12 @@ class CharacterClassCrudController extends AbstractCrudController
         yield Field::new('iconFile', 'Иконка (256x256)')
             ->setFormType(VichImageType::class)
             ->onlyOnForms();
+        yield ImageField::new('frameName', 'Рамка аватара')
+            ->setBasePath('/uploads/frames')
+            ->onlyOnIndex();
+        yield Field::new('frameFile', 'Рамка аватара (PNG)')
+            ->setFormType(VichImageType::class)
+            ->onlyOnForms();
         yield TextField::new('starterBitsSummary', 'Стартовые биты')->hideOnForm();
         // Editable many-to-many: pick which template Bit rows (character
         // === null) this class starts with — see Bit's docblock.

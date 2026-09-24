@@ -48,6 +48,7 @@ class BattleSerializer
                 'avatarUrl' => null,
                 'level' => $battle->getOpponentMonster()?->getLevel(),
                 'className' => null,
+                'frameName' => null,
             ],
             'character' => [
                 'hp' => $battle->getCharacter()->getHp(),
@@ -116,6 +117,7 @@ class BattleSerializer
                 'avatarUrl' => $opponent?->getUser()->getAvatarUrl(),
                 'level' => $opponent?->getLevel(),
                 'className' => $opponent?->getCharacterClass()->getName(),
+                'frameName' => $opponent?->getCharacterClass()->getFrameName(),
             ],
             'character' => [
                 'hp' => $you->getHp(),

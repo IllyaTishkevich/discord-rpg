@@ -29,6 +29,8 @@ export interface Character {
   class: {
     code: string;
     name: string;
+    // Decorative frame overlaid on top of avatarUrl when set (getIconUrl("frames", ...)) — see CombatantBar.tsx.
+    frameName: string | null;
   };
   hp: number;
   maxHp: number;

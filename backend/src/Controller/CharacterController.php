@@ -82,6 +82,9 @@ class CharacterController extends AbstractApiController
             'class' => [
                 'code' => $character->getCharacterClass()->getCode(),
                 'name' => $character->getCharacterClass()->getName(),
+                // Overlaid on top of avatarUrl by the Activity (CombatantBar.tsx)
+                // when set — see CharacterClass::$frameFile's docblock.
+                'frameName' => $character->getCharacterClass()->getFrameName(),
             ],
             'hp' => $character->getHp(),
             'maxHp' => $character->getEffectiveMaxHp(),

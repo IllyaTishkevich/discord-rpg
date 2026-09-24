@@ -28,7 +28,7 @@ class UploadsController extends AbstractController
         '/api/uploads/{directory}/{filename}',
         name: 'uploads_show',
         requirements: [
-            'directory' => 'monsters|bits|classes|abilities|equipment|items',
+            'directory' => 'monsters|bits|classes|abilities|equipment|items|frames',
             'filename' => '[A-Za-z0-9._-]+',
         ],
         methods: ['GET'],

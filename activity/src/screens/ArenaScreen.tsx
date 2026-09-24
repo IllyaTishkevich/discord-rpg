@@ -590,6 +590,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
         maxHp={battle.opponent.maxHp ?? 0}
         avatarUrl={battle.opponent.avatarUrl}
         iconName={battle.opponent.iconName}
+        frameName={battle.opponent.frameName}
         variant="enemy"
       />
 
@@ -806,6 +807,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
         hp={battle.character.hp}
         maxHp={battle.character.maxHp}
         avatarUrl={character.avatarUrl}
+        frameName={character.class.frameName}
         variant="hp"
       />
 

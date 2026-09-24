@@ -37,6 +37,8 @@ export interface BattleState {
     // PvP only: the opponent's Discord avatar (ready-to-use URL) and class name.
     avatarUrl: string | null;
     className: string | null;
+    // PvP only: decorative frame overlaid on top of avatarUrl when set (getIconUrl("frames", ...)) — see CombatantBar.tsx.
+    frameName: string | null;
   };
   character: { hp: number; maxHp: number };
   rewards: { xp: number; coins: number } | null;

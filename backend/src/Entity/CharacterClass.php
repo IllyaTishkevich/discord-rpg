@@ -96,6 +96,31 @@ class CharacterClass
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $iconUpdatedAt = null;
 
+    /**
+     * A decorative frame overlaid on top of a character's own avatar (or a
+     * PvP opponent's) wherever it's shown — see CombatantBar.tsx on the
+     * frontend, which layers it directly on top of avatarUrl. Optional
+     * (null means no frame — the plain avatar shows as-is); PNG-only since
+     * an overlay that can't be transparent isn't useful as a frame. Not
+     * persisted itself — Vich reads this on flush to store the file and
+     * fill frameName/frameSize, then clears it (see $iconFile above).
+     */
+    #[Vich\UploadableField(mapping: 'character_class_frame', fileNameProperty: 'frameName', size: 'frameSize')]
+    #[Assert\Image(
+        mimeTypes: ['image/png'],
+        mimeTypesMessage: 'Рамка должна быть PNG-изображением.',
+    )]
+    private ?File $frameFile = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?string $frameName = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?int $frameSize = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $frameUpdatedAt = null;
+
     public function __construct(string $code, string $name, int $baseHp, int $baseEnergy)
     {
         $this->code = $code;
@@ -272,6 +297,46 @@ class CharacterClass
     public function getIconSize(): ?int
     {
         return $this->iconSize;
+    }
+
+    public function setFrameFile(?File $frameFile = null): static
+    {
+        $this->frameFile = $frameFile;
+
+        if (null !== $frameFile) {
+            $this->frameUpdatedAt = new \DateTimeImmutable();
+        }
+
+        return $this;
+    }
+
+    public function getFrameFile(): ?File
+    {
+        return $this->frameFile;
+    }
+
+    public function setFrameName(?string $frameName): static
+    {
+        $this->frameName = $frameName;
+
+        return $this;
+    }
+
+    public function getFrameName(): ?string
+    {
+        return $this->frameName;
+    }
+
+    public function setFrameSize(?int $frameSize): static
+    {
+        $this->frameSize = $frameSize;
+
+        return $this;
+    }
+
+    public function getFrameSize(): ?int
+    {
+        return $this->frameSize;
     }
 
     public function __toString(): string
