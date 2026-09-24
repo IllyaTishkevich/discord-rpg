@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, MutableRefObject } from "react";
 import { fetchAbilities } from "../api/abilities";
 import { fetchBattle, fetchLatestRound, submitExchangeMove, throwRound } from "../api/battles";
 import { BitCoin, FACE_LABEL } from "../components/BitCoin";
@@ -77,6 +78,77 @@ function stageMoveFor(exchange: Exchange | undefined, wantPlayerSide: boolean): 
   return exchange.responderFace ? { face: exchange.responderFace, count: exchange.responderCount } : null;
 }
 
+// A bit mid-flight from its pool slot to the stage circle it was just
+// played into — spawned in spawnFlyingBits() below, purely cosmetic (the
+// real state transition already happened by the time this renders).
+interface FlyingBit {
+  id: string;
+  face: BitFace;
+  multiplier: number;
+  from: DOMRect;
+  to: DOMRect;
+}
+
+const FLIGHT_DURATION_MS = 450;
+
+function FlyingBitCoin({ bit }: { bit: FlyingBit }) {
+  const [arrived, setArrived] = useState(false);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setArrived(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  const rect = arrived ? bit.to : bit.from;
+  const style: CSSProperties = {
+    position: "fixed",
+    left: rect.left,
+    top: rect.top,
+    width: bit.from.width,
+    height: bit.from.height,
+    transition: `left ${FLIGHT_DURATION_MS}ms ease, top ${FLIGHT_DURATION_MS}ms ease`,
+    pointerEvents: "none",
+    zIndex: 50,
+  };
+
+  return (
+    <div style={style}>
+      <BitCoin face={bit.face} multiplier={bit.multiplier} />
+    </div>
+  );
+}
+
+// Diffs a used[] array before/after a move against the pool's last known DOM
+// positions (via `refs`) to spawn one FlyingBit per bit that just became
+// used — i.e. was just played into `circleEl` (the matching side's stage
+// circle). Must be called BEFORE the setPlayerUsed/setOpponentUsed calls
+// that would otherwise unmount those bits from the pool.
+function flyingBitsFor(
+  prevUsed: boolean[],
+  nextUsed: boolean[],
+  faces: BitFace[],
+  multipliers: number[],
+  refs: MutableRefObject<Record<number, HTMLDivElement | null>>,
+  circleEl: HTMLDivElement | null,
+): FlyingBit[] {
+  if (!circleEl) return [];
+  const to = circleEl.getBoundingClientRect();
+  const entries: FlyingBit[] = [];
+  nextUsed.forEach((used, index) => {
+    if (!used || prevUsed[index]) return;
+    const el = refs.current[index];
+    if (!el) return;
+    entries.push({
+      id: `${index}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      face: faces[index],
+      multiplier: multipliers[index] ?? 1,
+      from: el.getBoundingClientRect(),
+      to,
+    });
+  });
+  return entries;
+}
+
 interface Props {
   initialBattle: BattleState;
   character: Character;
@@ -116,6 +188,56 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   // overriding ABILITY_OPTIONS' hardcoded default — never blocks rendering
   // if the fetch fails, it just falls back to that default.
   const [abilityLabels, setAbilityLabels] = useState<Record<string, string>>({});
+  const [flyingBits, setFlyingBits] = useState<FlyingBit[]>([]);
+  const opponentPoolRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const playerPoolRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const opponentCircleRef = useRef<HTMLDivElement | null>(null);
+  const playerCircleRef = useRef<HTMLDivElement | null>(null);
+  // The last used[] arrays actually applied to state, tracked outside React
+  // state so flyingBitsFor() always diffs against a true "previous" value —
+  // reading playerUsed/opponentUsed state directly would go stale inside the
+  // PvP poll's setInterval closure across repeated ticks.
+  const lastPlayerUsedRef = useRef<boolean[]>([]);
+  const lastOpponentUsedRef = useRef<boolean[]>([]);
+
+  function spawnFlyingBits(entries: FlyingBit[]) {
+    if (entries.length === 0) return;
+    setFlyingBits((current) => [...current, ...entries]);
+    window.setTimeout(() => {
+      setFlyingBits((current) => current.filter((b) => !entries.includes(b)));
+    }, FLIGHT_DURATION_MS);
+  }
+
+  // Applies a fresh used/faces/multipliers snapshot for both sides, flying
+  // any newly-used bits into their side's stage circle first.
+  function applyExchangeSnapshot(next: {
+    playerFaces: BitFace[];
+    opponentFaces: BitFace[];
+    playerUsed: boolean[];
+    opponentUsed: boolean[];
+    playerMultipliers: number[];
+    opponentMultipliers: number[];
+  }) {
+    spawnFlyingBits([
+      ...flyingBitsFor(lastPlayerUsedRef.current, next.playerUsed, next.playerFaces, next.playerMultipliers, playerPoolRefs, playerCircleRef.current),
+      ...flyingBitsFor(
+        lastOpponentUsedRef.current,
+        next.opponentUsed,
+        next.opponentFaces,
+        next.opponentMultipliers,
+        opponentPoolRefs,
+        opponentCircleRef.current,
+      ),
+    ]);
+    lastPlayerUsedRef.current = next.playerUsed;
+    lastOpponentUsedRef.current = next.opponentUsed;
+    setPlayerFaces(next.playerFaces);
+    setOpponentFaces(next.opponentFaces);
+    setPlayerUsed(next.playerUsed);
+    setOpponentUsed(next.opponentUsed);
+    setPlayerMultipliers(next.playerMultipliers);
+    setOpponentMultipliers(next.opponentMultipliers);
+  }
 
   useEffect(() => {
     fetchAbilities()
@@ -131,10 +253,12 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     try {
       const result = await throwRound(battle.id);
       setBattle(result.battle);
+      lastPlayerUsedRef.current = result.playerUsed ?? result.playerFaces.map(() => false);
+      lastOpponentUsedRef.current = result.opponentUsed ?? result.opponentFaces.map(() => false);
       setPlayerFaces(result.playerFaces);
       setOpponentFaces(result.opponentFaces);
-      setPlayerUsed(result.playerUsed ?? result.playerFaces.map(() => false));
-      setOpponentUsed(result.opponentUsed ?? result.opponentFaces.map(() => false));
+      setPlayerUsed(lastPlayerUsedRef.current);
+      setOpponentUsed(lastOpponentUsedRef.current);
       setPlayerMultipliers(result.playerMultipliers);
       setOpponentMultipliers(result.opponentMultipliers);
       setTurn(result.turn);
@@ -144,6 +268,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setPendingAbilityChoice(false);
       setSelectedAbility(defaultAbility(character.abilities));
       setFlipTargets([]);
+      setFlyingBits([]);
       setPhase("playing");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось бросить биты.");
@@ -162,12 +287,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     setError(null);
     try {
       const response = await submitExchangeMove(battle.id, indices, ability);
-      setPlayerFaces(response.playerFaces);
-      setOpponentFaces(response.opponentFaces);
-      setPlayerUsed(response.playerUsed);
-      setOpponentUsed(response.opponentUsed);
-      setPlayerMultipliers(response.playerMultipliers);
-      setOpponentMultipliers(response.opponentMultipliers);
+      applyExchangeSnapshot(response);
       setExchangeLog((current) => [...current, ...response.newExchanges]);
       setBattle(response.battle);
       setSelectedIndices([]);
@@ -206,12 +326,14 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
         setBattle(updated);
 
         if (updated.exchange) {
-          setPlayerFaces(updated.exchange.playerFaces);
-          setOpponentFaces(updated.exchange.opponentFaces);
-          setPlayerUsed(updated.exchange.playerUsed ?? []);
-          setOpponentUsed(updated.exchange.opponentUsed ?? []);
-          setPlayerMultipliers(updated.exchange.playerMultipliers);
-          setOpponentMultipliers(updated.exchange.opponentMultipliers);
+          applyExchangeSnapshot({
+            playerFaces: updated.exchange.playerFaces,
+            opponentFaces: updated.exchange.opponentFaces,
+            playerUsed: updated.exchange.playerUsed ?? [],
+            opponentUsed: updated.exchange.opponentUsed ?? [],
+            playerMultipliers: updated.exchange.playerMultipliers,
+            opponentMultipliers: updated.exchange.opponentMultipliers,
+          });
           setTurn(updated.exchange.turn);
           setIncomingMove(updated.exchange.incomingMove);
           return;
@@ -231,6 +353,9 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     }, PVP_POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
+    // applyExchangeSnapshot only reads refs and stable setters, never
+    // render-scoped state, so a fresh reference each render isn't needed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [battle.mode, battle.id, turn, phase]);
 
   // Fires once the per-move deadline (battle.roundDeadlineAt) reaches zero,
@@ -247,12 +372,14 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setBattle(updated);
 
       if (updated.exchange) {
-        setPlayerFaces(updated.exchange.playerFaces);
-        setOpponentFaces(updated.exchange.opponentFaces);
-        setPlayerUsed(updated.exchange.playerUsed ?? []);
-        setOpponentUsed(updated.exchange.opponentUsed ?? []);
-        setPlayerMultipliers(updated.exchange.playerMultipliers);
-        setOpponentMultipliers(updated.exchange.opponentMultipliers);
+        applyExchangeSnapshot({
+          playerFaces: updated.exchange.playerFaces,
+          opponentFaces: updated.exchange.opponentFaces,
+          playerUsed: updated.exchange.playerUsed ?? [],
+          opponentUsed: updated.exchange.opponentUsed ?? [],
+          playerMultipliers: updated.exchange.playerMultipliers,
+          opponentMultipliers: updated.exchange.opponentMultipliers,
+        });
         setTurn(updated.exchange.turn);
         setIncomingMove(updated.exchange.incomingMove);
         setSelectedIndices([]);
@@ -354,17 +481,25 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
           <div className="arena__pool arena__pool--opponent">
             <p className="arena__pool-label">Биты противника</p>
             <div className="arena__coins">
-              {opponentFaces.map((face, index) => (
-                <BitCoin
-                  key={index}
-                  face={face}
-                  used={opponentUsed[index]}
-                  multiplier={opponentMultipliers[index]}
-                  selectable={pendingAbilityChoice && selectedAbility === "flip" && !opponentUsed[index]}
-                  selected={flipTargets.includes(index)}
-                  onClick={() => toggleFlipTarget(index)}
-                />
-              ))}
+              {opponentFaces.map(
+                (face, index) =>
+                  !opponentUsed[index] && (
+                    <div
+                      ref={(el) => {
+                        opponentPoolRefs.current[index] = el;
+                      }}
+                      key={index}
+                    >
+                      <BitCoin
+                        face={face}
+                        multiplier={opponentMultipliers[index]}
+                        selectable={pendingAbilityChoice && selectedAbility === "flip"}
+                        selected={flipTargets.includes(index)}
+                        onClick={() => toggleFlipTarget(index)}
+                      />
+                    </div>
+                  ),
+              )}
             </div>
           </div>
 
@@ -393,10 +528,10 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
             </div>
 
             <div className="arena__stage-circles">
-              <div className="arena__stage-circle arena__stage-circle--opponent">
+              <div ref={opponentCircleRef} className="arena__stage-circle arena__stage-circle--opponent">
                 {opponentStageMove && <BitCoin key={exchangeLog.length} face={opponentStageMove.face} multiplier={opponentStageMove.count} />}
               </div>
-              <div className="arena__stage-circle arena__stage-circle--player">
+              <div ref={playerCircleRef} className="arena__stage-circle arena__stage-circle--player">
                 {playerStageMove && <BitCoin key={exchangeLog.length} face={playerStageMove.face} multiplier={playerStageMove.count} />}
               </div>
             </div>
@@ -415,23 +550,25 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
           <div className="arena__pool arena__pool--player">
             {!pendingAbilityChoice && (
               <div className="arena__coins">
-                {playerFaces.map((face, index) => (
-                  <BitCoin
-                    key={index}
-                    face={face}
-                    used={playerUsed[index]}
-                    multiplier={playerMultipliers[index]}
-                    selectable={
-                      turn !== "wait" &&
-                      !pendingAbilityChoice &&
-                      !playerUsed[index] &&
-                      face !== "empty" &&
-                      (turn !== "respond" || face === "defense")
-                    }
-                    selected={selectedIndices.includes(index)}
-                    onClick={() => toggleOwnBit(index)}
-                  />
-                ))}
+                {playerFaces.map(
+                  (face, index) =>
+                    !playerUsed[index] && (
+                      <div
+                        ref={(el) => {
+                          playerPoolRefs.current[index] = el;
+                        }}
+                        key={index}
+                      >
+                        <BitCoin
+                          face={face}
+                          multiplier={playerMultipliers[index]}
+                          selectable={turn !== "wait" && face !== "empty" && (turn !== "respond" || face === "defense")}
+                          selected={selectedIndices.includes(index)}
+                          onClick={() => toggleOwnBit(index)}
+                        />
+                      </div>
+                    ),
+                )}
               </div>
             )}
 
@@ -537,6 +674,10 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
         avatarUrl={character.avatarUrl}
         variant="hp"
       />
+
+      {flyingBits.map((bit) => (
+        <FlyingBitCoin key={bit.id} bit={bit} />
+      ))}
 
       {error && <p className="arena__error">{error}</p>}
     </div>
