@@ -1,4 +1,5 @@
 .inventory {
+  width: fit-content;
   padding: 24px;
   color: #fff;
 }
