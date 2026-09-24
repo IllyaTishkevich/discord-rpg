@@ -23,7 +23,7 @@ class InventoryController extends AbstractApiController
             'capacity' => $character->getInventoryCapacity(),
             'items' => array_map(
                 fn (CharacterInventoryItem $row) => $this->serializeRow($row),
-                $character->getInventoryItems()->toArray(),
+                array_values($character->getInventoryItems()->toArray()),
             ),
         ]);
     }
@@ -73,9 +73,17 @@ class InventoryController extends AbstractApiController
             'energy' => $character->getEnergy(),
             'xp' => $character->getXp(),
             'capacity' => $character->getInventoryCapacity(),
+            // array_values() re-keys from 0 — removeInventoryItem() (used/
+            // sold/discarded rows) unsets the removed row's key in place
+            // rather than reindexing, and PHP's json_encode() serializes an
+            // array with a gap in its integer keys (or one not starting at
+            // 0 — i.e. anything but the very last row removed) as a JSON
+            // *object* instead of an array, which crashes the Activity's
+            // frontend (InventoryActionResult.items is typed/used as an
+            // array — e.g. `.some()`/`.map()` don't exist on a plain object).
             'items' => array_map(
                 fn (CharacterInventoryItem $row) => $this->serializeRow($row),
-                $character->getInventoryItems()->toArray(),
+                array_values($character->getInventoryItems()->toArray()),
             ),
         ]);
     }
