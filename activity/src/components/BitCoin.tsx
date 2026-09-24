@@ -63,6 +63,7 @@ export function BitCoin({ face, selectable, selected, used, multiplier, iconUrl,
   const hasMultiplier = face !== null && (multiplier ?? 1) > 1;
 
   return (
+  <>
     <button
       type="button"
       className={classNames}
@@ -74,7 +75,8 @@ export function BitCoin({ face, selectable, selected, used, multiplier, iconUrl,
       <span className="bit-coin__face">
         {face && iconUrl ? <img className="bit-coin__image" src={iconUrl} alt="" /> : face ? FACE_ICON[face] : "?"}
       </span>
-      {hasMultiplier && <span className="bit-coin__multiplier">×{multiplier}</span>}
     </button>
+    {hasMultiplier && <span className="bit-coin__multiplier">×{multiplier}</span>}
+    </>
   );
 }

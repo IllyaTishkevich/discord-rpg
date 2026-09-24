@@ -71,7 +71,6 @@
 }
 
 .bit-coin__face {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -80,9 +79,14 @@
   transform: rotateY(0deg);
 }
 
+/* Positioned directly against .bit-coin (the one ancestor with a hard
+   84x84 size and position:relative) instead of sizing as a percentage of
+   .bit-coin__face — a plain flex child's percentage width/height can end
+   up resolving against an indefinite size depending on the surrounding
+   layout, which is exactly what left this rendering at ~0px wide before. */
 .bit-coin__image {
-  width: 78%;
-  height: 78%;
+  position: absolute;
+  width: 78px;
   object-fit: contain;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
