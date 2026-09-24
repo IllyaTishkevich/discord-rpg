@@ -1,7 +1,7 @@
 .bit-coin {
   position: relative;
-  width: 56px;
-  height: 56px;
+  width: 84px;
+  height: 84px;
   border-radius: 50%;
   border: 2px solid #4e5058;
   /* Volume: a lit-from-top-left radial gradient for the coin's curved
@@ -15,7 +15,7 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  font-size: 24px;
+  font-size: 36px;
   cursor: default;
   transform: rotateY(90deg) scale(0.6);
   opacity: 0.4;
@@ -89,17 +89,17 @@
 
 .bit-coin__multiplier {
   position: absolute;
-  bottom: -4px;
-  right: -4px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 9px;
+  bottom: -6px;
+  right: -6px;
+  min-width: 27px;
+  height: 27px;
+  padding: 0 6px;
+  border-radius: 14px;
   background: #f0b232;
   color: #1e1f22;
-  font-size: 11px;
+  font-size: 16px;
   font-weight: 700;
-  line-height: 18px;
+  line-height: 27px;
   text-align: center;
   box-shadow: 0 0 0 2px #1e1f22;
 }

@@ -39,10 +39,9 @@ export function CombatantBar({ name, level, className, hp, maxHp, avatarUrl, ico
             </span>
           )}
         </div>
-        {/* Deliberately not clipped by the avatar's own circular overflow:hidden
-            above — a frame is typically drawn a bit larger than the avatar it
-            decorates (see .combatant-bar__icon-frame), same as Discord's own
-            profile decorations. */}
+        {/* Same size/position as the avatar, deliberately not clipped by its
+            circular overflow:hidden above — a frame with a transparent
+            center just outlines the avatar it decorates. */}
         {frameName && <img className="combatant-bar__icon-frame" src={getIconUrl("frames", frameName)} alt="" aria-hidden="true" />}
       </div>
       <div className="combatant-bar__info">

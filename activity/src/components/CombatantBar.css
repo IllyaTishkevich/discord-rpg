@@ -41,14 +41,14 @@
   font-weight: 700;
 }
 
-/* Overlaid on top of the avatar, intentionally a bit larger and unclipped
-   (unlike .combatant-bar__icon-avatar's circular overflow:hidden) — frame
-   art is typically drawn with some decorative bleed past the avatar edge. */
+/* Overlaid on top of the avatar, same size and position — unclipped (unlike
+   .combatant-bar__icon-avatar's circular overflow:hidden), so a frame with
+   transparent center just outlines the avatar exactly. */
 .combatant-bar__icon-frame {
   position: absolute;
-  inset: -20%;
-  width: 140%;
-  height: 140%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   pointer-events: none;
 }

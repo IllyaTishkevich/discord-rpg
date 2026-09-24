@@ -41,8 +41,8 @@
    reflow into the gap: the empty cell reads as "this is where that bit
    came from", not just a shrinking list. */
 .arena__pool-slot {
-  width: 56px;
-  height: 56px;
+  width: 84px;
+  height: 84px;
 }
 
 .arena__pool {
@@ -119,8 +119,8 @@
 
 .arena__stage-circle {
   position: relative;
-  width: 64px;
-  height: 64px;
+  width: 96px;
+  height: 96px;
   border-radius: 50%;
   display: flex;
   align-items: center;
