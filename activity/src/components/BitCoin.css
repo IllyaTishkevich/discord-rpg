@@ -86,7 +86,7 @@
    layout, which is exactly what left this rendering at ~0px wide before. */
 .bit-coin__image {
   position: absolute;
-  width: 78px;
+  width: 84px;
   object-fit: contain;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }

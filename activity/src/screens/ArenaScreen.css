@@ -56,6 +56,7 @@
 }
 
 .arena__pool--player {
+  display: flex;
   background: rgba(242, 63, 66, 0.1);
   border: 1px solid rgba(242, 63, 66, 0.35);
 }

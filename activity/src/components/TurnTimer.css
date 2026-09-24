@@ -1,6 +1,6 @@
 .turn-timer {
-  width: 64px;
-  height: 64px;
+  width: 128px;
+  height: 128px;
   border-radius: 50%;
   background: conic-gradient(#23a55a var(--turn-timer-percent, 100%), #1e1f22 0);
   display: flex;
