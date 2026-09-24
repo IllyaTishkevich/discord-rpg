@@ -9,6 +9,7 @@
   position: relative;
   transition: background 0.3s linear;
   flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .turn-timer--low {
