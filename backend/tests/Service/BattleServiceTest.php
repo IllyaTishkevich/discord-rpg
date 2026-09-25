@@ -19,6 +19,7 @@ use App\Service\LootService;
 use App\Service\QuestService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Mercure\HubInterface;
 
 /**
  * Focused on the per-move turn timer (BattleService::applyMoveTimeoutIfExpired()/
@@ -48,6 +49,10 @@ class BattleServiceTest extends TestCase
             $this->createMock(MonsterRepository::class),
             new LootService($entityManager, new InventoryService($entityManager)),
             roundTimeoutSeconds: 15,
+            // Never actually called — every publishPvpUpdate() call site is
+            // gated behind isPvp(), and every scenario here is PvE (see class
+            // docblock).
+            mercureHub: $this->createMock(HubInterface::class),
         );
     }
 
@@ -120,5 +125,36 @@ class BattleServiceTest extends TestCase
         $battle->setRoundDeadlineAt(new \DateTimeImmutable('-1 second'));
         $service->syncExchangeState($battle);
         self::assertSame(29, $battle->getCharacter()->getHp());
+    }
+
+    public function testVoluntarilyPassingTheLeadInPveHandsItToTheBotWithoutConsumingBits(): void
+    {
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->method('persist');
+        $entityManager->method('flush');
+        $service = $this->makeBattleService($entityManager);
+
+        // Player has the advantage, so it's genuinely the player's own turn
+        // to lead first (nothing auto-played by throwRound()).
+        $battle = $this->makePveBattle(
+            $this->bit(BitFace::Action, advantage: true),
+            $this->bit(BitFace::Attack),
+        );
+
+        $service->throwRound($battle);
+        self::assertSame(30, $battle->getCharacter()->getHp());
+
+        // Explicit pass (the Activity's "Пропустить ход" button, submitted
+        // as an empty indices array while it's a lead turn) — hands the
+        // lead to the bot immediately, same as a timed-out lead, just
+        // without waiting for the deadline. The bot leads with its Attack
+        // bit; the player still has its Action bit to respond with, so
+        // this pauses rather than dealing damage yet.
+        $result = $service->submitExchangeMove($battle, $battle->getCharacter(), [], null);
+
+        self::assertSame(30, $battle->getCharacter()->getHp(), 'voluntarily passing the lead must not deal damage by itself');
+        self::assertFalse($result->roundComplete);
+        self::assertSame('respond', $result->turn);
+        self::assertSame([], $result->newExchanges, 'passing the lead resolves no exchange of its own — only the bot\'s subsequent lead pauses at respond');
     }
 }

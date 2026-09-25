@@ -17,15 +17,53 @@ use App\Exception\NoPendingThrowException;
 use App\Repository\BattleRepository;
 use App\Serializer\BattleSerializer;
 use App\Service\BattleService;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Mercure\HubInterface;
+use Symfony\Component\Mercure\Jwt\Grant;
 use Symfony\Component\Routing\Attribute\Route;
 
 #[Route('/api/battles')]
 class BattleController extends AbstractApiController
 {
-    public function __construct(private readonly BattleSerializer $serializer)
+    public function __construct(
+        private readonly BattleSerializer $serializer,
+        #[Autowire(service: 'mercure.hub.default')] private readonly HubInterface $mercureHub,
+    ) {
+    }
+
+    /**
+     * Mints a subscriber JWT scoped to exactly this battle's own topic (see
+     * BattleService::publishPvpUpdate()) and attaches it as the cookie the
+     * Mercure hub expects for authorization, so the Activity's own EventSource
+     * subscription (activity/src/api/realtime.ts) — which reaches the hub
+     * same-origin, via nginx's /.well-known/mercure proxy — picks it up
+     * automatically. Called from every PvP response so it's always fresh;
+     * cheap to redo even though the token itself is long-lived.
+     */
+    private function attachMercureSubscriberCookie(JsonResponse $response, Battle $battle, Request $request): void
     {
+        $factory = $this->mercureHub->getFactory();
+        if (null === $factory) {
+            // No JWT factory configured for this hub — nothing to attach.
+            // Real-time push just won't work; the slow poll fallback still does.
+            return;
+        }
+
+        $token = $factory->create([new Grant([Grant::ACTION_SUBSCRIBE], ['battle/'.$battle->getId()])]);
+        $response->headers->setCookie(Cookie::create(
+            name: $this->mercureHub->getCookieName(),
+            value: $token,
+            path: '/.well-known/mercure',
+            // Mirrors the request's own scheme rather than hardcoding true —
+            // local dev runs over plain http (a Secure cookie would silently
+            // never be sent there), production is https.
+            secure: $request->isSecure(),
+            httpOnly: true,
+            sameSite: Cookie::SAMESITE_STRICT,
+        ));
     }
 
     #[Route('/pve', name: 'battle_start_pve', methods: ['POST'])]
@@ -60,7 +98,7 @@ class BattleController extends AbstractApiController
     }
 
     #[Route('/{id}', name: 'battle_show', methods: ['GET'])]
-    public function show(Battle $battle, BattleService $battleService): JsonResponse
+    public function show(Battle $battle, BattleService $battleService, Request $request): JsonResponse
     {
         $viewerIsOpponentSide = $this->requireParticipantSide($battle);
 
@@ -73,12 +111,15 @@ class BattleController extends AbstractApiController
         $battleService->syncExchangeState($battle);
 
         if ($battle->isPvp()) {
-            return $this->json([
+            $response = $this->json([
                 ...$this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
                 'exchange' => $battle->hasPendingThrow()
                     ? $this->serializer->throwResultForViewer($battleService->currentThrowResult($battle), $viewerIsOpponentSide)
                     : null,
             ]);
+            $this->attachMercureSubscriberCookie($response, $battle, $request);
+
+            return $response;
         }
 
         return $this->json([
@@ -99,7 +140,7 @@ class BattleController extends AbstractApiController
      * in_progress and the first round is thrown automatically.
      */
     #[Route('/{id}/join', name: 'battle_join_pvp', methods: ['POST'])]
-    public function join(Battle $battle, BattleService $battleService): JsonResponse
+    public function join(Battle $battle, BattleService $battleService, Request $request): JsonResponse
     {
         $viewerIsOpponentSide = $this->requireParticipantSide($battle);
         if (!$battle->isPvp()) {
@@ -115,7 +156,12 @@ class BattleController extends AbstractApiController
             return $this->json(['error' => $e->getMessage()], 409);
         }
 
-        return $this->json($this->serializer->battleForViewer($battle, $viewerIsOpponentSide));
+        $response = $this->json($this->serializer->battleForViewer($battle, $viewerIsOpponentSide));
+        // Set as early in the duel lifecycle as possible — by the time the
+        // first exchange happens, both sides should already be subscribed.
+        $this->attachMercureSubscriberCookie($response, $battle, $request);
+
+        return $response;
     }
 
     #[Route('/{id}/decline', name: 'battle_decline_pvp', methods: ['POST'])]
@@ -136,7 +182,7 @@ class BattleController extends AbstractApiController
     }
 
     #[Route('/{id}/throw', name: 'battle_throw_round', methods: ['POST'])]
-    public function throwRound(Battle $battle, BattleService $battleService): JsonResponse
+    public function throwRound(Battle $battle, BattleService $battleService, Request $request): JsonResponse
     {
         $viewerIsOpponentSide = $this->requireParticipantSide($battle);
 
@@ -147,7 +193,7 @@ class BattleController extends AbstractApiController
         }
 
         if ($battle->isPvp()) {
-            return $this->json([
+            $response = $this->json([
                 ...$this->serializer->throwResultForViewer($result, $viewerIsOpponentSide),
                 // Carries the freshly-set roundDeadlineAt — throwRound() is
                 // the only place that sets it besides submitExchangeMove()
@@ -155,6 +201,9 @@ class BattleController extends AbstractApiController
                 // response otherwise has nowhere else to put it.
                 'battle' => $this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
             ]);
+            $this->attachMercureSubscriberCookie($response, $battle, $request);
+
+            return $response;
         }
 
         return $this->json([
@@ -237,17 +286,23 @@ class BattleController extends AbstractApiController
         }
 
         if ($result->roundComplete) {
-            return $this->json([
+            $response = $this->json([
                 ...$this->serializer->exchangeMoveResultForViewer($result, $viewerIsOpponentSide),
                 'round' => $this->serializer->roundForViewer($result->round, $viewerIsOpponentSide),
                 'battle' => $this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
             ]);
+            $this->attachMercureSubscriberCookie($response, $battle, $request);
+
+            return $response;
         }
 
-        return $this->json([
+        $response = $this->json([
             ...$this->serializer->exchangeMoveResultForViewer($result, $viewerIsOpponentSide),
             'battle' => $this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
         ]);
+        $this->attachMercureSubscriberCookie($response, $battle, $request);
+
+        return $response;
     }
 
     /**

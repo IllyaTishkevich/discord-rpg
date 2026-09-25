@@ -3,6 +3,7 @@ import type { CSSProperties, MutableRefObject } from "react";
 import { fetchAbilities } from "../api/abilities";
 import { fetchBattle, fetchLatestRound, submitExchangeMove, throwRound } from "../api/battles";
 import { getIconUrl } from "../api/client";
+import { subscribeToBattle } from "../api/realtime";
 import { BitCoin, FACE_LABEL } from "../components/BitCoin";
 import { CombatantBar } from "../components/CombatantBar";
 import { TurnTimer } from "../components/TurnTimer";
@@ -10,10 +11,13 @@ import type { AbilityChoice, AbilityType, BattleState, Exchange, ExchangeTurn, I
 import type { BitFace, Character } from "../types/character";
 import "./ArenaScreen.css";
 
-// How often to poll GET /battles/{id} while it's the other real duelist's
-// turn (PvE/event never reaches this — the bot always resolves synchronously
-// in the same request as the player's own move).
-const PVP_POLL_INTERVAL_MS = 2000;
+// Fallback-only poll interval while it's the other real duelist's turn
+// (PvE/event never reaches this — the bot always resolves synchronously in
+// the same request as the player's own move). Real-time push (Mercure, see
+// ../api/realtime.ts) is the primary way an opponent's move reaches this
+// client now — this just covers a dropped connection, so it can afford to
+// be slow.
+const PVP_POLL_FALLBACK_INTERVAL_MS = 10000;
 
 type Phase = "loading" | "playing" | "resolved";
 
@@ -441,46 +445,74 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     }
   }
 
-  // PvP only: while it's the other duelist's turn, poll for their move —
-  // PvE/event never sets turn to "wait" (the bot always resolves inline).
+  // Picks up the other duelist's move: fetches the fresh battle/exchange
+  // snapshot and applies it exactly like a throw response would. Shared by
+  // the real-time push handler, the slow poll fallback, and handleTimeout
+  // below — all three just need "go see what changed right now".
+  async function refreshFromServer() {
+    const updated = await fetchBattle(battle.id);
+    setBattle(updated);
+
+    if (updated.exchange) {
+      applyExchangeSnapshot({
+        playerFaces: updated.exchange.playerFaces,
+        opponentFaces: updated.exchange.opponentFaces,
+        playerUsed: updated.exchange.playerUsed ?? [],
+        opponentUsed: updated.exchange.opponentUsed ?? [],
+        playerMultipliers: updated.exchange.playerMultipliers,
+        opponentMultipliers: updated.exchange.opponentMultipliers,
+        playerIcons: updated.exchange.playerIcons,
+        opponentIcons: updated.exchange.opponentIcons,
+      });
+      setTurn(updated.exchange.turn);
+      setIncomingMove(updated.exchange.incomingMove);
+      return;
+    }
+
+    // No pending exchange left — the other duelist's move just finished
+    // the round (or knocked someone out mid-exchange).
+    const round = await fetchLatestRound(battle.id);
+    if (round) {
+      setExchangeLog(round.exchanges);
+      setLastRound(round);
+    }
+    setPhase("resolved");
+  }
+
+  // PvP only: real-time push is the primary way an opponent's move reaches
+  // this client — active for the whole battle (not just while turn==="wait"),
+  // since it's one persistent connection rather than repeated requests.
+  useEffect(() => {
+    if (battle.mode !== "pvp" || phase !== "playing") {
+      return;
+    }
+
+    const unsubscribe = subscribeToBattle(battle.id, () => {
+      void refreshFromServer().catch(() => {
+        // Transient failure — the poll fallback below or the next push recovers.
+      });
+    });
+
+    return unsubscribe;
+    // refreshFromServer closes over battle.id/applyExchangeSnapshot, both
+    // stable in the ways that matter here — see the poll effect right below
+    // for the same reasoning, which this mirrors.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [battle.mode, battle.id, phase]);
+
+  // PvP only, fallback: while it's the other duelist's turn, also poll —
+  // covers a dropped/reconnecting push connection. PvE/event never sets
+  // turn to "wait" (the bot always resolves inline).
   useEffect(() => {
     if (battle.mode !== "pvp" || turn !== "wait" || phase !== "playing") {
       return;
     }
 
-    const interval = setInterval(async () => {
-      try {
-        const updated = await fetchBattle(battle.id);
-        setBattle(updated);
-
-        if (updated.exchange) {
-          applyExchangeSnapshot({
-            playerFaces: updated.exchange.playerFaces,
-            opponentFaces: updated.exchange.opponentFaces,
-            playerUsed: updated.exchange.playerUsed ?? [],
-            opponentUsed: updated.exchange.opponentUsed ?? [],
-            playerMultipliers: updated.exchange.playerMultipliers,
-            opponentMultipliers: updated.exchange.opponentMultipliers,
-            playerIcons: updated.exchange.playerIcons,
-            opponentIcons: updated.exchange.opponentIcons,
-          });
-          setTurn(updated.exchange.turn);
-          setIncomingMove(updated.exchange.incomingMove);
-          return;
-        }
-
-        // No pending exchange left — the other duelist's move just
-        // finished the round (or knocked someone out mid-exchange).
-        const round = await fetchLatestRound(battle.id);
-        if (round) {
-          setExchangeLog(round.exchanges);
-          setLastRound(round);
-        }
-        setPhase("resolved");
-      } catch {
+    const interval = setInterval(() => {
+      void refreshFromServer().catch(() => {
         // Transient poll failure — try again next tick.
-      }
-    }, PVP_POLL_INTERVAL_MS);
+      });
+    }, PVP_POLL_FALLBACK_INTERVAL_MS);
 
     return () => clearInterval(interval);
     // applyExchangeSnapshot only reads refs and stable setters, never
@@ -498,37 +530,13 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   async function handleTimeout() {
     if (busy || phase !== "playing") return;
     try {
-      const updated = await fetchBattle(battle.id);
-      setBattle(updated);
-
-      if (updated.exchange) {
-        applyExchangeSnapshot({
-          playerFaces: updated.exchange.playerFaces,
-          opponentFaces: updated.exchange.opponentFaces,
-          playerUsed: updated.exchange.playerUsed ?? [],
-          opponentUsed: updated.exchange.opponentUsed ?? [],
-          playerMultipliers: updated.exchange.playerMultipliers,
-          opponentMultipliers: updated.exchange.opponentMultipliers,
-          playerIcons: updated.exchange.playerIcons,
-          opponentIcons: updated.exchange.opponentIcons,
-        });
-        setTurn(updated.exchange.turn);
-        setIncomingMove(updated.exchange.incomingMove);
-        setSelectedIndices([]);
-        setPendingAbilityChoice(false);
-        setFlipTargets([]);
-        return;
-      }
-
-      const round = await fetchLatestRound(battle.id);
-      if (round) {
-        setExchangeLog(round.exchanges);
-        setLastRound(round);
-      }
-      setPhase("resolved");
+      await refreshFromServer();
+      setSelectedIndices([]);
+      setPendingAbilityChoice(false);
+      setFlipTargets([]);
     } catch {
       // Transient failure — the timer will have already hit 0; the next
-      // request the player makes (or the next PvP poll tick) recovers.
+      // request the player makes (or the next push/poll) recovers.
     }
   }
 
@@ -806,9 +814,9 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
 
             {turn !== "wait" && !pendingAbilityChoice && (
               <div className="arena__move-actions">
-                {turn === "respond" && (
+                {(turn === "respond" || turn === "lead") && (
                   <button className="arena__action arena__action--secondary" disabled={busy} onClick={() => void sendMove([])}>
-                    Не отвечать
+                    {turn === "respond" ? "Не отвечать" : "Пропустить ход"}
                   </button>
                 )}
                 <button className="arena__action" disabled={busy || selectedIndices.length === 0} onClick={handleConfirmSelection}>

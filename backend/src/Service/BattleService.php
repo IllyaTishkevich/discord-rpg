@@ -30,6 +30,8 @@ use App\Exception\NotBattleParticipantException;
 use App\Repository\MonsterRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\Mercure\HubInterface;
+use Symfony\Component\Mercure\Update;
 
 /**
  * Application service orchestrating battles: PvE/event fights against a bot
@@ -104,7 +106,31 @@ class BattleService
         // Per-move deadline for the interactive exchange flow, PvE/event and
         // PvP alike — see refreshMoveDeadline()/applyMoveTimeoutIfExpired().
         #[Autowire(env: 'int:ROUND_TIMEOUT_SECONDS')] private readonly int $roundTimeoutSeconds,
+        // Real-time PvP duel sync — see publishPvpUpdate()'s docblock.
+        #[Autowire(service: 'mercure.hub.default')] private readonly HubInterface $mercureHub,
     ) {
+    }
+
+    /**
+     * Tells both duelists' clients to re-fetch this battle right now, instead
+     * of waiting for their next poll tick (activity/src/api/realtime.ts) —
+     * called after every PvP state change (throwRound(), a committed lead/
+     * respond, a timeout auto-pass, a round finishing). The update itself
+     * carries no battle data, just enough to know which battle to re-fetch —
+     * GET /battles/{id} (already participant-gated) remains the only source
+     * of truth for the actual state, so this can't leak anything by being
+     * observed. private: true means only a subscriber holding a JWT scoped
+     * to this exact "battle/{id}" topic (minted for the two participants
+     * only — see BattleController::attachMercureSubscriberCookie()) ever
+     * receives it, even though the topic name itself is guessable.
+     */
+    private function publishPvpUpdate(Battle $battle): void
+    {
+        $this->mercureHub->publish(new Update(
+            topics: 'battle/'.$battle->getId(),
+            data: json_encode(['battleId' => $battle->getId()], \JSON_THROW_ON_ERROR),
+            private: true,
+        ));
     }
 
     public function startPveBattle(Character $character): Battle
@@ -271,6 +297,10 @@ class BattleService
         }
 
         $this->entityManager->flush();
+
+        if ($battle->isPvp()) {
+            $this->publishPvpUpdate($battle);
+        }
 
         return $this->throwResultFromThrows($battle, $playerThrows, $opponentThrows);
     }
@@ -462,11 +492,21 @@ class BattleService
         $botChoice = $this->pickBotAbility($battle);
         $newExchanges = [];
 
-        ['state' => $state, 'exchange' => $exchange] = 'lead' === $turn
-            ? $this->interactiveEngine->submitLead($state, $indices, $ability, $botChoice)
-            : $this->interactiveEngine->submitRespond($state, $indices);
-        $newExchanges[] = $exchange;
-        $this->applyExchangeDamage($battle, $exchange);
+        if ('lead' === $turn && [] === $indices) {
+            // Voluntarily forfeiting the lead (the Activity's "Не отвечать"
+            // button, shown for a lead turn too — see ArenaScreen.tsx) —
+            // hands it straight to the bot without resolving an exchange of
+            // its own, same as a timed-out lead
+            // (applyMoveTimeoutIfExpired()'s PvE branch), just triggered by
+            // an explicit click instead of the deadline.
+            $state = $this->interactiveEngine->passLead($state);
+        } else {
+            ['state' => $state, 'exchange' => $exchange] = 'lead' === $turn
+                ? $this->interactiveEngine->submitLead($state, $indices, $ability, $botChoice)
+                : $this->interactiveEngine->submitRespond($state, $indices);
+            $newExchanges[] = $exchange;
+            $this->applyExchangeDamage($battle, $exchange);
+        }
         $knockedOut = $this->isBattleKnockedOut($battle);
 
         // Keep auto-playing any further bot-driven exchanges (e.g. the
@@ -574,6 +614,7 @@ class BattleService
         $battle->setPendingExchangeState($state->toArray());
         $this->refreshMoveDeadline($battle);
         $this->entityManager->flush();
+        $this->publishPvpUpdate($battle);
 
         $turnNow = $this->interactiveEngine->turnForSide($state, true);
 
@@ -658,6 +699,12 @@ class BattleService
         }
 
         if ($battle->isPvp()) {
+            // Whichever side is about to get auto-passed here didn't take
+            // any action themselves — without this, only the OTHER side
+            // (whose own request just triggered this lazy check, e.g. via
+            // syncExchangeState()) would ever learn a timeout just fired.
+            $this->publishPvpUpdate($battle);
+
             foreach ([true, false] as $isPlayerSide) {
                 $turn = $this->interactiveEngine->turnForSide($state, $isPlayerSide);
                 if ('respond' === $turn) {
@@ -769,6 +816,10 @@ class BattleService
         );
         $this->entityManager->persist($round);
         $this->entityManager->flush();
+
+        if ($battle->isPvp()) {
+            $this->publishPvpUpdate($battle);
+        }
 
         return $round;
     }

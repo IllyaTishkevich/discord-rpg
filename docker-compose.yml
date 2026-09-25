@@ -17,8 +17,34 @@ services:
       - ./backend:/var/www/app
     depends_on:
       - database
+      - mercure
     environment:
       DATABASE_URL: "postgresql://discord_rpg:!ChangeMe!@database:5432/discord_rpg?serverVersion=16&charset=utf8"
+      # Internal, server-to-server: BattleService publishes updates here directly.
+      MERCURE_URL: "http://mercure/.well-known/mercure"
+      # Only used by MercureBundle's own Twig/discovery helpers, which this
+      # app doesn't use — the frontend computes its own subscribe URL
+      # (activity/src/api/realtime.ts), mirroring how it already computes
+      # BASE_URL for the API itself.
+      MERCURE_PUBLIC_URL: "http://localhost:8000/.well-known/mercure"
+      MERCURE_JWT_SECRET: "!ChangeThisMercureHubJWTSecretKey!"
+
+  # Real-time push (docs/BATTLE_ROOM_DESIGN.md's PvP duel sync) — a battle's
+  # participants subscribe to a private "battle/{id}" topic so an opponent's
+  # move is pushed the instant it happens, instead of only surfacing on the
+  # next poll tick (see BattleService::publishPvpUpdate()). nginx proxies
+  # /.well-known/mercure below so the browser reaches it same-origin as the
+  # API, and can use the same cookie-based subscriber auth in both places.
+  mercure:
+    # Pinned to the last legacy-protocol (0.x) release — :latest moved to
+    # Mercure.rocks 1.0's RFC 9068 access tokens (protocol_version 1.0),
+    # which need a trusted-issuer/audience setup this app doesn't use.
+    image: dunglas/mercure:v0.15
+    restart: unless-stopped
+    environment:
+      SERVER_NAME: ":80"
+      MERCURE_PUBLISHER_JWT_KEY: "!ChangeThisMercureHubJWTSecretKey!"
+      MERCURE_SUBSCRIBER_JWT_KEY: "!ChangeThisMercureHubJWTSecretKey!"
 
   nginx:
     image: nginx:alpine
@@ -29,6 +55,7 @@ services:
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - backend
+      - mercure
 
 volumes:
   db-data:
