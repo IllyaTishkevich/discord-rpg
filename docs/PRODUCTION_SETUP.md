@@ -153,6 +153,12 @@ GOOGLE_CLIENT_SECRET=<из B.10>
 # iframe. На проде обычно указываете на сам публичный домен (посмотреть
 # собранный dist как есть); локально в dev — на `npm run dev`.
 ACTIVITY_PREVIEW_URL=https://discord-rpg.example.com
+
+# Real-time синхронизация PvP-дуэлей (см. B.14) — без этого блока дуэли
+# всё ещё работают, просто на медленном фоновом поллинге.
+MERCURE_URL=http://127.0.0.1:3000/.well-known/mercure
+MERCURE_PUBLIC_URL=https://discord-rpg.example.com/.well-known/mercure
+MERCURE_JWT_SECRET=<то же значение, что в discord-rpg-mercure.service, см. B.14.3>
 ```
 
 `bot/.env`:
@@ -169,6 +175,10 @@ BOT_API_SECRET=<то же значение, что в backend/.env.local>
 ```bash
 VITE_DISCORD_CLIENT_ID=<из A.1>
 VITE_BACKEND_API_URL=https://discord-rpg.example.com/api
+# Используется только инструментом /admin → "Превью Activity" вне настоящего
+# Discord — встроенный в реальный клиент Activity сам вычисляет путь через
+# /.proxy/.well-known/mercure, см. B.14.5.
+VITE_MERCURE_URL=https://discord-rpg.example.com/.well-known/mercure
 ```
 
 > `BOT_API_SECRET` должен **совпадать** в `backend` и `bot` — это общий секрет для service-to-service запросов (заголовок `X-Bot-Secret`, проверяется в `backend/src/Controller/AbstractBotController.php`).
@@ -274,6 +284,21 @@ server {
     location ^~ /uploads/ {
         root /opt/discord-rpg/backend/public;
         try_files $uri =404;
+    }
+
+    # Real-time PvP-синхронизация (Mercure) — см. B.14. SSE требует
+    # небуферизированное, долгоживущее соединение, в отличие от всего
+    # остального в этом файле.
+    location /.well-known/mercure {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 24h;
     }
 
     # статика Activity (собранный React, см. B.9)
@@ -391,9 +416,114 @@ sudo -u discord-rpg npm install --omit=dev
 sudo systemctl restart discord-rpg-bot
 ```
 
-> `deploy.sh` **не** перезапускает `npm run deploy-commands` — если менялись слэш-команды бота, это отдельный разовый шаг (см. A.5).
+> `deploy.sh` **не** перезапускает `npm run deploy-commands` — если менялись слэш-команды бота, это отдельный разовый шаг (см. A.5). Он также **не** трогает Mercure hub (B.14) — тот перезапускать нужно только вручную, если поменялся сам `Caddyfile` или `MERCURE_JWT_SECRET`, а не при обычном обновлении кода.
 
-### B.14. Чек-лист безопасности перед запуском
+### B.14. Настроить real-time-синхронизацию PvP-дуэлей (Mercure)
+
+Без этого раздела дуэли всё ещё полностью работают — ход противника просто доходит до игрока только на медленном фоновом поллинге (раз в ~10 секунд, см. `activity/src/api/realtime.ts`), а не мгновенным пушем. Можно пропустить и вернуться к этому разделу позже.
+
+#### B.14.1. Скачать бинарник hub'а
+
+Закреплена та же версия, что и в корневом `docker-compose.yml` для локальной разработки (`v0.15.11` — последний релиз ещё на "legacy" протоколе Mercure; актуальный `:latest`/1.0 перешёл на access-токены по RFC 9068 с обязательной настройкой issuer/audience, лишняя сложность без явной пользы здесь):
+
+```bash
+curl -fsSL -o /tmp/mercure.tar.gz \
+    https://github.com/dunglas/mercure/releases/download/v0.15.11/mercure_Linux_x86_64.tar.gz
+sudo mkdir -p /opt/mercure
+sudo tar -xzf /tmp/mercure.tar.gz -C /opt/mercure mercure
+sudo chown -R discord-rpg:discord-rpg /opt/mercure
+```
+
+> Другая архитектура сервера (ARM и т. п.) — возьмите подходящий архив со страницы релиза: https://github.com/dunglas/mercure/releases/tag/v0.15.11 (например, `mercure_Linux_arm64.tar.gz`).
+
+#### B.14.2. Написать Caddyfile
+
+Hub слушает только на `127.0.0.1` — наружу его отдаёт nginx (см. B.14.4), поэтому свой TLS/автогенерация сертификатов ему не нужны:
+
+```caddyfile
+# /opt/mercure/Caddyfile
+{
+	admin off
+	order mercure after encode
+}
+
+http://127.0.0.1:3000 {
+	encode zstd gzip
+
+	mercure {
+		publisher_jwt {env.MERCURE_JWT_SECRET}
+		subscriber_jwt {env.MERCURE_JWT_SECRET}
+	}
+
+	respond "Not Found" 404
+}
+```
+
+#### B.14.3. systemd-юнит
+
+```ini
+# /etc/systemd/system/discord-rpg-mercure.service
+[Unit]
+Description=discord-rpg Mercure hub (real-time PvP sync)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mercure
+Environment=MERCURE_JWT_SECRET=CHANGE_ME_STRONG_SECRET
+ExecStart=/opt/mercure/mercure run --config /opt/mercure/Caddyfile --adapter caddyfile
+Restart=on-failure
+User=discord-rpg
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now discord-rpg-mercure
+```
+
+> `MERCURE_JWT_SECRET` здесь и в `backend/.env.local` (B.14.5) должны **совпадать** — общий секрет, которым подписываются и проверяются токены подписки/публикации, аналогично `BOT_API_SECRET` для бота (B.5).
+
+#### B.14.4. Проксирование в nginx
+
+Добавьте в **уже существующий** `server { listen 443 ssl; ... }` блок из B.8 (рядом с `location ^~ /uploads/`):
+
+```nginx
+    location /.well-known/mercure {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 24h;
+    }
+```
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+#### B.14.5. Переменные окружения
+
+См. готовые блоки в B.5 (`backend/.env.local`: `MERCURE_URL`/`MERCURE_PUBLIC_URL`/`MERCURE_JWT_SECRET`; `activity/.env.local`: `VITE_MERCURE_URL`).
+
+> Отдельный Discord Developer Portal URL Mapping для Mercure **не нужен** — уже существующий маппинг корневого префикса `/` (A.2) проксирует `/.proxy/<любой путь>` на тот же домен, сохраняя путь как есть, так что `/.proxy/.well-known/mercure` (см. `activity/src/api/realtime.ts`) автоматически приходит на `https://discord-rpg.example.com/.well-known/mercure`.
+
+#### B.14.6. Проверка
+
+```bash
+curl -i "https://discord-rpg.example.com/.well-known/mercure?topic=test"
+```
+
+Должен вернуться `401 Unauthorized` (не `502`/`404`/таймаут) — значит nginx достучался до hub'а, и тот сам корректно отклоняет запрос без валидного токена подписки. Полную проверку удобнее всего сделать через реальную PvP-дуэль между двумя аккаунтами: ход соперника должен появляться почти мгновенно, а не только раз в ~10 секунд.
+
+### B.15. Чек-лист безопасности перед запуском
 
 - [ ] `APP_ENV=prod` в `backend/.env.local` (не `dev` — иначе включён профайлер и подробные ошибки).
 - [ ] Все секреты (`APP_SECRET`, `BOT_API_SECRET`, пароль БД, `JWT_PASSPHRASE`) — сгенерированы заново, не оставлены dev-плейсхолдерами из `backend/.env` (`changeme-bot-secret`, `!ChangeMe!` и т.п.).
