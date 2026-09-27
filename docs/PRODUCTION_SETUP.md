@@ -293,7 +293,13 @@ server {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
-        proxy_set_header Host $host;
+        # NOT $host — Caddy (the hub) routes by Host header against its own
+        # Caddyfile site address (127.0.0.1:3000, see B.14.2); forwarding the
+        # public domain here makes Caddy fail to match any site and silently
+        # answer 200 with an empty body instead of proxying to the hub at
+        # all (found the hard way — this exact bug shipped and had to be
+        # diagnosed live against a real deploy).
+        proxy_set_header Host 127.0.0.1:3000;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_buffering off;
@@ -504,7 +510,13 @@ sudo systemctl enable --now discord-rpg-mercure
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
-        proxy_set_header Host $host;
+        # NOT $host — Caddy (the hub) routes by Host header against its own
+        # Caddyfile site address (127.0.0.1:3000, see B.14.2); forwarding the
+        # public domain here makes Caddy fail to match any site and silently
+        # answer 200 with an empty body instead of proxying to the hub at
+        # all (found the hard way — this exact bug shipped and had to be
+        # diagnosed live against a real deploy).
+        proxy_set_header Host 127.0.0.1:3000;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_buffering off;
