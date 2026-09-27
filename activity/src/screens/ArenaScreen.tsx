@@ -440,6 +440,14 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось отправить ход.");
+      // The rejection itself means this client's idea of the board was
+      // stale (someone else's move landed first, or a timeout auto-passed
+      // this exact decision server-side already) — resync immediately
+      // instead of leaving the player stuck retrying the same now-invalid
+      // move against unchanged local state.
+      void refreshFromServer().catch(() => {
+        // Transient failure — the next push/poll recovers.
+      });
     } finally {
       setBusy(false);
     }
@@ -448,10 +456,20 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   // Picks up the other duelist's move: fetches the fresh battle/exchange
   // snapshot and applies it exactly like a throw response would. Shared by
   // the real-time push handler, the slow poll fallback, and handleTimeout
-  // below — all three just need "go see what changed right now".
+  // below — all three just need "go see what changed right now". The push
+  // handler in particular can fire mid-selection (it's live for the whole
+  // battle, not just while turn==="wait" — e.g. the opponent's action
+  // resolved a whole flurry of exchanges in one go before this side gets to
+  // act again), so any locally selected-but-not-yet-submitted bits are
+  // always dropped here rather than only on a timeout: a stale index that
+  // pointed at an unused bit a moment ago can point at an already-used one
+  // now, and submitting it would just bounce off the server as invalid.
   async function refreshFromServer() {
     const updated = await fetchBattle(battle.id);
     setBattle(updated);
+    setSelectedIndices([]);
+    setPendingAbilityChoice(false);
+    setFlipTargets([]);
 
     if (updated.exchange) {
       applyExchangeSnapshot({
@@ -531,9 +549,6 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     if (busy || phase !== "playing") return;
     try {
       await refreshFromServer();
-      setSelectedIndices([]);
-      setPendingAbilityChoice(false);
-      setFlipTargets([]);
     } catch {
       // Transient failure — the timer will have already hit 0; the next
       // request the player makes (or the next push/poll) recovers.
