@@ -424,17 +424,26 @@ sudo systemctl restart discord-rpg-bot
 
 #### B.14.1. Скачать бинарник hub'а
 
-Закреплена та же версия, что и в корневом `docker-compose.yml` для локальной разработки (`v0.15.11` — последний релиз ещё на "legacy" протоколе Mercure; актуальный `:latest`/1.0 перешёл на access-токены по RFC 9068 с обязательной настройкой issuer/audience, лишняя сложность без явной пользы здесь):
+Закреплена та же версия, что и в корневом `docker-compose.yml` для локальной разработки (`v0.15.11` — последний релиз ещё на "legacy" протоколе Mercure; актуальный `:latest`/1.0 перешёл на access-токены по RFC 9068 с обязательной настройкой issuer/audience, лишняя сложность без явной пользы здесь).
+
+**Сначала проверьте архитектуру сервера** — архив нужен строго под неё, иначе бинарник не запустится (`Exec format error`):
+
+```bash
+uname -m
+```
+- `x86_64` → `mercure_Linux_x86_64.tar.gz`
+- `aarch64`/`arm64` → `mercure_Linux_arm64.tar.gz`
+
+(другие варианты — смотрите полный список на странице релиза: https://github.com/dunglas/mercure/releases/tag/v0.15.11)
 
 ```bash
 curl -fsSL -o /tmp/mercure.tar.gz \
-    https://github.com/dunglas/mercure/releases/download/v0.15.11/mercure_Linux_x86_64.tar.gz
+    https://github.com/dunglas/mercure/releases/download/v0.15.11/mercure_Linux_<ВАША_АРХИТЕКТУРА>.tar.gz
 sudo mkdir -p /opt/mercure
 sudo tar -xzf /tmp/mercure.tar.gz -C /opt/mercure mercure
 sudo chown -R discord-rpg:discord-rpg /opt/mercure
+file /opt/mercure/mercure   # сверьте, что архитектура в выводе совпадает с uname -m
 ```
-
-> Другая архитектура сервера (ARM и т. п.) — возьмите подходящий архив со страницы релиза: https://github.com/dunglas/mercure/releases/tag/v0.15.11 (например, `mercure_Linux_arm64.tar.gz`).
 
 #### B.14.2. Написать Caddyfile
 
