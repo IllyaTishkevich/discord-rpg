@@ -34,6 +34,6 @@ export default {
       )
       .setColor(quest.isClaimed ? 0x23a55a : quest.isComplete ? 0xf0a020 : 0x5865f2);
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   },
 };

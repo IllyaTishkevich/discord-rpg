@@ -29,6 +29,6 @@ export default {
       .addFields(items.map((item) => ({ name: `${item.name} — ${item.price} монет`, value: formatEffect(item) })))
       .setColor(0x5865f2);
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   },
 };

@@ -16,7 +16,7 @@ export default {
         targetApplication: process.env.DISCORD_CLIENT_ID,
         maxAge: 3600,
       });
-      await interaction.reply(`Запускай Activity: ${invite.url}`);
+      await interaction.reply({ content: `Запускай Activity: ${invite.url}`, ephemeral: true });
     } catch (error) {
       console.error("Failed to create Activity invite:", error);
       await interaction.reply({
