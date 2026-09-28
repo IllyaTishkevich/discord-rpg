@@ -220,6 +220,14 @@
   padding: 8px 12px;
 }
 
+.arena__hint--autopass {
+  background: #3a2a1a;
+  border: 1px solid #f0a020;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 600;
+}
+
 .arena__result {
   margin-top: 16px;
 }

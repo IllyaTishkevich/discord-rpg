@@ -207,6 +207,10 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   const [opponentIcons, setOpponentIcons] = useState<(string | null)[]>([]);
   const [turn, setTurn] = useState<ExchangeTurn | null>(null);
   const [incomingMove, setIncomingMove] = useState<IncomingMove | null>(null);
+  // Non-null only while the no-legal-move auto-pass below is counting down
+  // — surfaces *why* the turn is about to be skipped, and locks the move
+  // controls/bit pool so nothing races the auto-pass itself.
+  const [autoPassSecondsLeft, setAutoPassSecondsLeft] = useState<number | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [pendingAbilityChoice, setPendingAbilityChoice] = useState(false);
   const [selectedAbility, setSelectedAbility] = useState<AbilityType>(defaultAbility(character.abilities));
@@ -617,18 +621,29 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   // reflect them, and hasLegalMove still correctly sees them as available.
   useEffect(() => {
     if (busy || phase !== "playing" || pendingAbilityChoice || ("lead" !== turn && "respond" !== turn)) {
+      setAutoPassSecondsLeft(null);
       return;
     }
     const hasLegalMove = playerFaces.some(
       (face, index) => !playerUsed[index] && "empty" !== face && ("respond" !== turn || "defense" === face),
     );
     if (hasLegalMove) {
+      setAutoPassSecondsLeft(null);
       return;
     }
+
+    const deadline = Date.now() + AUTO_PASS_DELAY_MS;
+    setAutoPassSecondsLeft(Math.ceil(AUTO_PASS_DELAY_MS / 1000));
+    const tick = window.setInterval(() => {
+      setAutoPassSecondsLeft(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    }, 200);
     const timer = window.setTimeout(() => {
       void sendMove([]);
     }, AUTO_PASS_DELAY_MS);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(tick);
+    };
     // sendMove itself sets `busy` synchronously before its first await, and
     // its own success always moves `turn` away from "lead"/"respond" (or
     // ends the round) — so this can't re-fire for the same decision twice.
@@ -653,7 +668,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   }
 
   function toggleOwnBit(index: number) {
-    if (pendingAbilityChoice || playerUsed[index]) return;
+    if (pendingAbilityChoice || playerUsed[index] || null !== autoPassSecondsLeft) return;
     // An empty-faced bit never activates — it can't be led or responded
     // with at all (it can only ever be targeted by an opponent's Flip, via
     // toggleFlipTarget below, which has no such restriction).
@@ -856,7 +871,14 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
               Соперник разыграл: <strong>{FACE_LABEL[incomingMove.face]} ×{incomingMove.count}</strong>. Ответить можно только защитой, или пропусти.
             </p>
           )}
-          {turn === "lead" && !pendingAbilityChoice && <p className="arena__hint">Твой ход — выбери одну или несколько одинаковых бит.</p>}
+          {turn === "lead" && !pendingAbilityChoice && null === autoPassSecondsLeft && (
+            <p className="arena__hint">Твой ход — выбери одну или несколько одинаковых бит.</p>
+          )}
+          {null !== autoPassSecondsLeft && (
+            <p className="arena__hint arena__hint--autopass">
+              Нет доступных ходов — автопропуск через {autoPassSecondsLeft}с...
+            </p>
+          )}
 
           <div className="arena__pool arena__pool--player">
             {!pendingAbilityChoice && (
@@ -874,7 +896,9 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                         face={face}
                         multiplier={playerMultipliers[index]}
                         iconUrl={bitIconUrl(playerIcons[index])}
-                        selectable={turn !== "wait" && face !== "empty" && (turn !== "respond" || face === "defense")}
+                        selectable={
+                          null === autoPassSecondsLeft && turn !== "wait" && face !== "empty" && (turn !== "respond" || face === "defense")
+                        }
                         onClick={() => toggleOwnBit(index)}
                       />
                     )}
@@ -933,11 +957,19 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
             {turn !== "wait" && !pendingAbilityChoice && (
               <div className="arena__move-actions">
                 {(turn === "respond" || turn === "lead") && (
-                  <button className="arena__action arena__action--secondary" disabled={busy} onClick={() => void sendMove([])}>
+                  <button
+                    className="arena__action arena__action--secondary"
+                    disabled={busy || null !== autoPassSecondsLeft}
+                    onClick={() => void sendMove([])}
+                  >
                     {turn === "respond" ? "Не отвечать" : "Пропустить ход"}
                   </button>
                 )}
-                <button className="arena__action" disabled={busy || selectedIndices.length === 0} onClick={handleConfirmSelection}>
+                <button
+                  className="arena__action"
+                  disabled={busy || selectedIndices.length === 0 || null !== autoPassSecondsLeft}
+                  onClick={handleConfirmSelection}
+                >
                   Подтвердить{selectedIndices.length > 0 ? ` (${selectedIndices.length})` : ""}
                 </button>
               </div>
