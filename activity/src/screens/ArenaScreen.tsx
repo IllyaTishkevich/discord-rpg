@@ -221,6 +221,11 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   // render and get toggled independently, sharing one combined budget
   // (selectedIndices.length, i.e. however many action points were spent).
   const [flipOwnTargets, setFlipOwnTargets] = useState<number[]>([]);
+  // Double always targets exactly one of the caster's own not-yet-played
+  // bits — kept as a 0/1-length array (like flipOwnTargets) rather than a
+  // plain nullable index purely so the same toggle/render/reset patterns
+  // apply to both.
+  const [doubleTargets, setDoubleTargets] = useState<number[]>([]);
   const [exchangeLog, setExchangeLog] = useState<Exchange[]>([]);
   const [lastRound, setLastRound] = useState<RoundResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -522,6 +527,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setSelectedAbility(defaultAbility(character.abilities));
       setFlipTargets([]);
       setFlipOwnTargets([]);
+      setDoubleTargets([]);
       setPhase("playing");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось бросить биты.");
@@ -551,6 +557,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setSelectedAbility(defaultAbility(character.abilities));
       setFlipTargets([]);
       setFlipOwnTargets([]);
+      setDoubleTargets([]);
 
       if (response.roundComplete && response.round) {
         // Authoritative — covers PvP, where some of this round's exchanges
@@ -596,6 +603,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     setPendingAbilityChoice(false);
     setFlipTargets([]);
     setFlipOwnTargets([]);
+    setDoubleTargets([]);
 
     if (updated.exchange) {
       applyExchangeSnapshot({
@@ -798,6 +806,13 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     });
   }
 
+  // Double's target picker — always exactly one bit, so picking a new one
+  // simply replaces whatever was picked before instead of adding to it.
+  function toggleDoubleTarget(index: number) {
+    if (playerUsed[index] || selectedIndices.includes(index)) return;
+    setDoubleTargets((current) => (current.includes(index) ? [] : [index]));
+  }
+
   function handleConfirmSelection() {
     if (selectedIndices.length === 0) return;
     if (playerFaces[selectedIndices[0]] === "action") {
@@ -810,7 +825,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   function handleSendActionMove() {
     void sendMove(selectedIndices, {
       ability: selectedAbility,
-      targets: selectedAbility === "flip" ? flipTargets : [],
+      targets: selectedAbility === "flip" ? flipTargets : selectedAbility === "double" ? doubleTargets : [],
       ownTargets: selectedAbility === "flip" ? flipOwnTargets : [],
     });
   }
@@ -986,7 +1001,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
               </div>
             )}
 
-            {pendingAbilityChoice && selectedAbility === "flip" && (
+            {pendingAbilityChoice && (selectedAbility === "flip" || selectedAbility === "double") && (
               <div className="arena__coins">
                 {playerFaces.map((face, index) => (
                   <div className="arena__pool-slot" key={index}>
@@ -996,8 +1011,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                         multiplier={playerMultipliers[index]}
                         iconUrl={bitIconUrl(playerIcons[index])}
                         selectable
-                        selected={flipOwnTargets.includes(index)}
-                        onClick={() => toggleOwnFlipTarget(index)}
+                        selected={"flip" === selectedAbility ? flipOwnTargets.includes(index) : doubleTargets.includes(index)}
+                        onClick={() => ("flip" === selectedAbility ? toggleOwnFlipTarget(index) : toggleDoubleTarget(index))}
                       />
                     )}
                   </div>
@@ -1033,6 +1048,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                           setSelectedAbility(option.type);
                           setFlipTargets([]);
                           setFlipOwnTargets([]);
+                          setDoubleTargets([]);
                         }}
                       >
                         <span className="arena__ability-top">
@@ -1051,6 +1067,9 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                     Выбери до {selectedIndices.length} бит (свои или соперника), чтобы перевернуть их (
                     {flipTargets.length + flipOwnTargets.length}/{selectedIndices.length})
                   </p>
+                )}
+                {selectedAbility === "double" && availableAbilityOptions.length > 0 && (
+                  <p className="arena__hint">Выбери одну свою неиспользованную биту, чтобы удвоить её номинал ({doubleTargets.length}/1)</p>
                 )}
                 <div className="arena__move-actions">
                   <button className="arena__action arena__action--secondary" disabled={busy} onClick={() => setPendingAbilityChoice(false)}>
