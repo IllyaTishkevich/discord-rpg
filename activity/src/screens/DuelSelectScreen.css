@@ -1,0 +1,80 @@
+.duel-select {
+  padding: 24px;
+  color: #fff;
+}
+
+.duel-select__hint {
+  opacity: 0.7;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.duel-select__error {
+  color: #f23f42;
+}
+
+.duel-select__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.duel-select__candidate {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #2b2d31;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+}
+
+.duel-select__avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.duel-select__avatar--placeholder {
+  background: #4e5058;
+}
+
+.duel-select__info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+}
+
+.duel-select__info span {
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+.duel-select__challenge {
+  background: #5865f2;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.duel-select__challenge:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.duel-select__back {
+  margin-top: 20px;
+  background: transparent;
+  color: #fff;
+  border: 1px solid #4e5058;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+}

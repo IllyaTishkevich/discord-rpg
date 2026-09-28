@@ -46,6 +46,9 @@ export interface BattleState {
   youReady?: boolean;
   opponentReady?: boolean;
   opponentAccepted?: boolean;
+  // Whether the viewer is the side that sent this challenge, as opposed to
+  // the one who received it — see DuelLobbyScreen.tsx.
+  youAreChallenger?: boolean;
   // From GET /battles/{id} — a fresh snapshot of the pending exchange (if
   // any), so a client can see faces/used/turn update without a throw of its
   // own: for PvP, picking up the other duelist's move via polling; for

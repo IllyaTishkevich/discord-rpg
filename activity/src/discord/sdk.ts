@@ -56,3 +56,34 @@ export async function authenticateWithDiscord(): Promise<void> {
 
   await sdk.commands.authenticate({ access_token: discordAccessToken });
 }
+
+export interface VoiceChannelParticipant {
+  discordId: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+function avatarUrl(discordId: string, avatarHash: string | null | undefined): string | null {
+  return avatarHash ? `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png` : null;
+}
+
+/**
+ * Everyone currently in the voice channel this Activity is running in
+ * (bots excluded) — used by the "Начать дуэль" picker to offer duel
+ * candidates without needing the bot to tell us who's around. Requires
+ * authenticateWithDiscord() to have already completed (any command beyond
+ * ready()/authorize()/authenticate() needs it), which is always true by the
+ * time a screen could call this — see App.tsx's init sequence.
+ */
+export async function fetchVoiceChannelParticipants(): Promise<VoiceChannelParticipant[]> {
+  const sdk = getDiscordSdk();
+  const { participants } = await sdk.commands.getInstanceConnectedParticipants();
+
+  return participants
+    .filter((p) => !p.bot)
+    .map((p) => ({
+      discordId: p.id,
+      displayName: p.nickname ?? p.global_name ?? p.username,
+      avatarUrl: avatarUrl(p.id, p.avatar),
+    }));
+}

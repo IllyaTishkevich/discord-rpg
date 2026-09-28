@@ -15,3 +15,22 @@ export function createCharacter(classCode: string): Promise<Character> {
     body: JSON.stringify({ classCode }),
   });
 }
+
+export interface DuelCandidate {
+  discordId: string;
+  displayName: string;
+  level: number;
+  className: string;
+}
+
+/**
+ * Which of the given Discord IDs (e.g. from a voice channel's participant
+ * list — see discord/sdk.ts's fetchVoiceChannelParticipants()) have a
+ * character at all — never includes the caller's own entry.
+ */
+export function lookupCharactersByDiscordIds(discordIds: string[]): Promise<DuelCandidate[]> {
+  return apiFetch<DuelCandidate[]>("/characters/by-discord-ids", {
+    method: "POST",
+    body: JSON.stringify({ discordIds }),
+  });
+}

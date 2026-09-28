@@ -13,6 +13,21 @@ export function fetchMyActivePvp(): Promise<BattleState | null> {
   return apiFetch<BattleState | null>("/battles/my-active-pvp");
 }
 
+/**
+ * Activity-native "Начать дуэль" — the JWT-authed equivalent of the bot's
+ * `/duel` command, used by the voice-channel duel picker
+ * (DuelSelectScreen.tsx). The challenged player is separately DM'd by the
+ * bot (BattleService::notifyDuelChallenge()); this just creates the
+ * Waiting challenge and returns it exactly like fetchMyActivePvp() would
+ * once it exists.
+ */
+export function createDuelChallenge(opponentDiscordId: string): Promise<BattleState> {
+  return apiFetch<BattleState>("/battles/pvp", {
+    method: "POST",
+    body: JSON.stringify({ opponentDiscordId }),
+  });
+}
+
 export function joinPvpBattle(battleId: number): Promise<BattleState> {
   return apiFetch<BattleState>(`/battles/${battleId}/join`, { method: "POST" });
 }

@@ -69,7 +69,10 @@ export function DuelLobbyScreen({ battle, onReady, onDeclined }: Props) {
   return (
     <div className="duel-lobby">
       <h1>Дуэль с {current.opponent.name}</h1>
-      {!current.opponentAccepted && <p>Ждём, пока соперник примет вызов в Discord...</p>}
+      {!current.opponentAccepted && current.youAreChallenger && <p>Ждём, пока соперник примет вызов...</p>}
+      {!current.opponentAccepted && !current.youAreChallenger && (
+        <p>{current.opponent.name} вызывает тебя на PvP-дуэль! Нажми «Я готов(а)», чтобы принять вызов, или «Отклонить», чтобы отказаться.</p>
+      )}
       {current.opponentAccepted && (
         <p>
           Ты: {current.youReady ? "готов(а)" : "не готов(а)"} · Соперник: {current.opponentReady ? "готов(а)" : "не готов(а)"}

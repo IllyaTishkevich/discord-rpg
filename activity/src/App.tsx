@@ -8,6 +8,7 @@ import { ArenaScreen } from "./screens/ArenaScreen";
 import { BattleResultScreen } from "./screens/BattleResultScreen";
 import { ClassSelectScreen } from "./screens/ClassSelectScreen";
 import { DuelLobbyScreen } from "./screens/DuelLobbyScreen";
+import { DuelSelectScreen } from "./screens/DuelSelectScreen";
 import { InventoryScreen } from "./screens/InventoryScreen";
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { ShopScreen } from "./screens/ShopScreen";
@@ -26,6 +27,7 @@ type LoadState =
   | { status: "inventory"; character: Character }
   | { status: "tournament"; character: Character }
   | { status: "quest"; character: Character }
+  | { status: "duel-select"; character: Character }
   | { status: "duel-lobby"; character: Character; battle: BattleState }
   | { status: "arena"; character: Character; battle: BattleState }
   | { status: "battle-result"; character: Character; battle: BattleState; round: RoundResult | null }
@@ -51,6 +53,11 @@ function describeError(err: unknown): string {
 function App() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [activeEvent, setActiveEvent] = useState<ActiveEvent | null>(null);
+  // A duel someone else challenged *you* to, still awaiting your response —
+  // surfaced as a "Вызов" button on the profile screen (see ProfileScreen.tsx)
+  // instead of auto-navigating there, so it doesn't yank the player away
+  // from whatever else they're doing. null once there's nothing pending.
+  const [pendingDuel, setPendingDuel] = useState<BattleState | null>(null);
 
   useEffect(() => {
     // Admin-only design/debug bypass (see backend's ActivityPreviewController,
@@ -71,17 +78,22 @@ function App() {
           .then(setActiveEvent)
           .catch(() => setActiveEvent(null));
 
-        // A pending/active duel takes priority over the profile screen —
-        // the player came here to fight, not to browse the shop.
+        // An active duel, or one *you* started and are waiting on, takes
+        // priority over the profile screen — you came here to fight, or to
+        // watch your own challenge get accepted, not to browse the shop.
+        // One somebody else sent *you* is different — see pendingDuel above.
         try {
           const pvpBattle = await fetchMyActivePvp();
-          if (pvpBattle) {
-            setState(
-              pvpBattle.status === "in_progress"
-                ? { status: "arena", character, battle: pvpBattle }
-                : { status: "duel-lobby", character, battle: pvpBattle },
-            );
+          if (pvpBattle && "in_progress" === pvpBattle.status) {
+            setState({ status: "arena", character, battle: pvpBattle });
             return;
+          }
+          if (pvpBattle && "waiting" === pvpBattle.status && pvpBattle.youAreChallenger) {
+            setState({ status: "duel-lobby", character, battle: pvpBattle });
+            return;
+          }
+          if (pvpBattle && "waiting" === pvpBattle.status && !pvpBattle.youAreChallenger) {
+            setPendingDuel(pvpBattle);
           }
         } catch {
           // no active duel (or lookup failed) — fall through to the profile screen
@@ -126,6 +138,22 @@ function App() {
     }
   }
 
+  // Every return to the profile screen re-checks for an incoming duel
+  // challenge — most importantly after finishing a PvE battle: someone may
+  // have challenged you while you were mid-fight (findActivePvpFor() on the
+  // backend already tracks a Waiting PvP challenge as a separate row from
+  // any PvE battle, so this was sitting there the whole time, just never
+  // re-checked until now).
+  async function goToProfile(character: Character) {
+    try {
+      const pvpBattle = await fetchMyActivePvp();
+      setPendingDuel(pvpBattle && "waiting" === pvpBattle.status && !pvpBattle.youAreChallenger ? pvpBattle : null);
+    } catch {
+      setPendingDuel(null);
+    }
+    setState({ status: "profile", character });
+  }
+
   if (state.status === "loading") {
     return <p>Загрузка...</p>;
   }
@@ -142,12 +170,21 @@ function App() {
     return <ClassSelectScreen onCharacterCreated={(character) => setState({ status: "profile", character })} />;
   }
 
+  if (state.status === "duel-select") {
+    return (
+      <DuelSelectScreen
+        onChallengeSent={(battle) => setState({ status: "duel-lobby", character: state.character, battle })}
+        onBack={() => void goToProfile(state.character)}
+      />
+    );
+  }
+
   if (state.status === "duel-lobby") {
     return (
       <DuelLobbyScreen
         battle={state.battle}
         onReady={(battle) => setState({ status: "arena", character: state.character, battle })}
-        onDeclined={() => setState({ status: "profile", character: state.character })}
+        onDeclined={() => void goToProfile(state.character)}
       />
     );
   }
@@ -163,32 +200,37 @@ function App() {
   }
 
   if (state.status === "battle-result") {
-    return (
-      <BattleResultScreen battle={state.battle} round={state.round} onContinue={() => setState({ status: "profile", character: state.character })} />
-    );
+    return <BattleResultScreen battle={state.battle} round={state.round} onContinue={() => void goToProfile(state.character)} />;
   }
 
   if (state.status === "shop") {
-    return <ShopScreen character={state.character} onBack={(character) => setState({ status: "profile", character })} />;
+    return <ShopScreen character={state.character} onBack={(character) => void goToProfile(character)} />;
   }
 
   if (state.status === "inventory") {
-    return <InventoryScreen character={state.character} onBack={(character) => setState({ status: "profile", character })} />;
+    return <InventoryScreen character={state.character} onBack={(character) => void goToProfile(character)} />;
   }
 
   if (state.status === "tournament") {
-    return <TournamentScreen onBack={() => setState({ status: "profile", character: state.character })} />;
+    return <TournamentScreen onBack={() => void goToProfile(state.character)} />;
   }
 
   if (state.status === "quest") {
-    return <WeeklyQuestScreen onBack={() => setState({ status: "profile", character: state.character })} />;
+    return <WeeklyQuestScreen onBack={() => void goToProfile(state.character)} />;
   }
 
   return (
     <ProfileScreen
       character={state.character}
       activeEvent={activeEvent}
+      pendingDuelOpponentName={pendingDuel?.opponent.name ?? null}
       onStartBattle={() => handleStartBattle(state.character)}
+      onStartDuel={() => setState({ status: "duel-select", character: state.character })}
+      onOpenPendingDuel={() => {
+        if (pendingDuel) {
+          setState({ status: "duel-lobby", character: state.character, battle: pendingDuel });
+        }
+      }}
       onJoinEvent={() => handleJoinEvent(state.character)}
       onOpenShop={() => setState({ status: "shop", character: state.character })}
       onOpenInventory={() => setState({ status: "inventory", character: state.character })}
