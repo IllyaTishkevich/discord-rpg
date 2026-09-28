@@ -478,21 +478,37 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     try {
       const result = await throwRound(battle.id);
       setBattle(result.battle);
-      lastPlayerUsedRef.current = result.playerUsed ?? result.playerFaces.map(() => false);
-      lastOpponentUsedRef.current = result.opponentUsed ?? result.opponentFaces.map(() => false);
+      // Baseline "nothing used yet", then run the fresh snapshot through the
+      // same diffing applyExchangeSnapshot always uses — never assign
+      // result.playerUsed/opponentUsed straight into last*UsedRef here.
+      // Doing that used to make any bit the opponent already led with before
+      // this client ever saw the round (e.g. a monster that moves first)
+      // look like it had "always" been used: applyExchangeSnapshot would
+      // then never see it as newly used, so it never entered
+      // pendingRevealRef and never got its scheduleCircleToLog flight —
+      // it just sat in the circle via the incomingMove fallback while
+      // "respond" was pending, then silently vanished (no reveal, no log
+      // entry) the moment the exchange resolved.
+      lastPlayerUsedRef.current = result.playerFaces.map(() => false);
+      lastOpponentUsedRef.current = result.opponentFaces.map(() => false);
       pendingRevealRef.current = { player: [], opponent: [] };
-      setPlayerFaces(result.playerFaces);
-      setOpponentFaces(result.opponentFaces);
-      setPlayerUsed(lastPlayerUsedRef.current);
-      setOpponentUsed(lastOpponentUsedRef.current);
       setPlayerLogRevealed(result.playerFaces.map(() => false));
       setOpponentLogRevealed(result.opponentFaces.map(() => false));
       updatePlayerRestingMove(null);
       updateOpponentRestingMove(null);
-      setPlayerMultipliers(result.playerMultipliers);
-      setOpponentMultipliers(result.opponentMultipliers);
-      setPlayerIcons(result.playerIcons);
-      setOpponentIcons(result.opponentIcons);
+      setFlyingBits([]);
+      applyExchangeSnapshot({
+        playerFaces: result.playerFaces,
+        opponentFaces: result.opponentFaces,
+        playerUsed: result.playerUsed ?? result.playerFaces.map(() => false),
+        opponentUsed: result.opponentUsed ?? result.opponentFaces.map(() => false),
+        playerMultipliers: result.playerMultipliers,
+        opponentMultipliers: result.opponentMultipliers,
+        playerIcons: result.playerIcons,
+        opponentIcons: result.opponentIcons,
+        turn: result.turn ?? "lead",
+        incomingMove: result.incomingMove ?? null,
+      });
       setTurn(result.turn);
       setIncomingMove(result.incomingMove);
       setExchangeLog([]);
@@ -500,7 +516,6 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setPendingAbilityChoice(false);
       setSelectedAbility(defaultAbility(character.abilities));
       setFlipTargets([]);
-      setFlyingBits([]);
       setPhase("playing");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось бросить биты.");
