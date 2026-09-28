@@ -18,6 +18,10 @@ export interface AbilityCatalogEntry {
   type: AbilityType;
   label: string;
   description: string | null;
+  // Action points required to activate — null means "variable" (spends
+  // however many were rolled, uncapped: Flip, UnblockableDamage).
+  actionCost: number | null;
+  iconName: string | null;
 }
 
 export interface BattleState {

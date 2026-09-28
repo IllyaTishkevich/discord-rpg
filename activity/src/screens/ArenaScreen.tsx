@@ -7,7 +7,7 @@ import { subscribeToBattle } from "../api/realtime";
 import { BitCoin, FACE_LABEL } from "../components/BitCoin";
 import { CombatantBar } from "../components/CombatantBar";
 import { TurnTimer } from "../components/TurnTimer";
-import type { AbilityChoice, AbilityType, BattleState, Exchange, ExchangeTurn, IncomingMove, RoundResult } from "../types/battle";
+import type { AbilityCatalogEntry, AbilityChoice, AbilityType, BattleState, Exchange, ExchangeTurn, IncomingMove, RoundResult } from "../types/battle";
 import type { BitFace, Character } from "../types/character";
 import "./ArenaScreen.css";
 
@@ -21,26 +21,11 @@ const PVP_POLL_FALLBACK_INTERVAL_MS = 10000;
 
 type Phase = "loading" | "playing" | "resolved";
 
-interface AbilityOption {
-  type: AbilityType;
-  label: string;
-  description: string;
-  fixedCost: number | null;
-}
-
-const ABILITY_OPTIONS: AbilityOption[] = [
-  { type: "flip", label: "Переворот", description: "1 очко за 1 цель — перевернуть биты противника", fixedCost: null },
-  { type: "unblockable_damage", label: "Неблокируемый урон", description: "Весь запас очков действия — урон в обход защиты", fixedCost: null },
-  { type: "reroll", label: "Переброс", description: "1 очко — перебросить все свои биты этого раунда", fixedCost: 1 },
-  { type: "damage_mirror", label: "Зеркало урона", description: "2 очка — соперник получает столько же урона, сколько нанёс сам", fixedCost: 2 },
-  { type: "destroy", label: "Уничтожение", description: "2 очка — уничтожить одну неиспользованную биту противника", fixedCost: 2 },
-  { type: "double", label: "Удвоение", description: "2 очка — удвоить номинал одной своей неиспользованной биты", fixedCost: 2 },
-];
-
-function isAffordable(option: AbilityOption, spentCount: number): boolean {
-  if (option.type === "flip") return true;
-  if (option.type === "unblockable_damage") return spentCount >= 1;
-  return spentCount >= (option.fixedCost ?? 0);
+// entry.actionCost === null means "variable" (Flip, UnblockableDamage) —
+// spends however many action points were rolled this move, always
+// affordable since this screen only ever shows with at least 1 spent.
+function isAffordable(entry: AbilityCatalogEntry, spentCount: number): boolean {
+  return null === entry.actionCost || spentCount >= entry.actionCost;
 }
 
 // Prefer Flip as the default pick (matches the old always-Flip behavior) but
@@ -214,7 +199,13 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [pendingAbilityChoice, setPendingAbilityChoice] = useState(false);
   const [selectedAbility, setSelectedAbility] = useState<AbilityType>(defaultAbility(character.abilities));
-  const availableAbilityOptions = ABILITY_OPTIONS.filter((option) => character.abilities.includes(option.type));
+  // Admin-editable label/description/cost/icon per ability (App\Entity\Ability),
+  // fetched once on mount — see the effect below. Empty until it resolves;
+  // availableAbilityOptions is then simply empty too for that brief window
+  // (same "Нет доступных способностей" message already shown for a
+  // character with no abilities at all).
+  const [abilityCatalog, setAbilityCatalog] = useState<AbilityCatalogEntry[]>([]);
+  const availableAbilityOptions = abilityCatalog.filter((entry) => character.abilities.includes(entry.type));
   const [flipTargets, setFlipTargets] = useState<number[]>([]);
   // Flip can also target the caster's own not-yet-played bits, alongside
   // (or instead of) the opponent's — a separate list since the two pools
@@ -226,14 +217,15 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   // plain nullable index purely so the same toggle/render/reset patterns
   // apply to both.
   const [doubleTargets, setDoubleTargets] = useState<number[]>([]);
+  // Reroll targets exactly one bit total, own OR opponent — same
+  // combined-budget idea as Flip's own+opponent pair, just capped at 1
+  // instead of selectedIndices.length.
+  const [rerollTargets, setRerollTargets] = useState<number[]>([]);
+  const [rerollOwnTargets, setRerollOwnTargets] = useState<number[]>([]);
   const [exchangeLog, setExchangeLog] = useState<Exchange[]>([]);
   const [lastRound, setLastRound] = useState<RoundResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Admin-editable player-facing name per ability (App\Entity\Ability::$label),
-  // overriding ABILITY_OPTIONS' hardcoded default — never blocks rendering
-  // if the fetch fails, it just falls back to that default.
-  const [abilityLabels, setAbilityLabels] = useState<Record<string, string>>({});
   const [flyingBits, setFlyingBits] = useState<FlyingBit[]>([]);
   const opponentPoolRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const playerPoolRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -476,9 +468,11 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
 
   useEffect(() => {
     fetchAbilities()
-      .then((abilities) => setAbilityLabels(Object.fromEntries(abilities.map((a) => [a.type, a.label]))))
+      .then(setAbilityCatalog)
       .catch(() => {
-        // Keep the hardcoded ABILITY_OPTIONS labels — never block the arena on this.
+        // Leave abilityCatalog empty — availableAbilityOptions then reads
+        // as "no abilities available", same message shown for a character
+        // that genuinely has none.
       });
   }, []);
 
@@ -528,6 +522,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setFlipTargets([]);
       setFlipOwnTargets([]);
       setDoubleTargets([]);
+      setRerollTargets([]);
+      setRerollOwnTargets([]);
       setPhase("playing");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось бросить биты.");
@@ -558,6 +554,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setFlipTargets([]);
       setFlipOwnTargets([]);
       setDoubleTargets([]);
+      setRerollTargets([]);
+      setRerollOwnTargets([]);
 
       if (response.roundComplete && response.round) {
         // Authoritative — covers PvP, where some of this round's exchanges
@@ -604,6 +602,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     setFlipTargets([]);
     setFlipOwnTargets([]);
     setDoubleTargets([]);
+    setRerollTargets([]);
+    setRerollOwnTargets([]);
 
     if (updated.exchange) {
       applyExchangeSnapshot({
@@ -813,6 +813,25 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     setDoubleTargets((current) => (current.includes(index) ? [] : [index]));
   }
 
+  // Reroll's opponent-side target — same single-target semantics as
+  // toggleDoubleTarget, but sharing its budget with toggleRerollOwnTarget
+  // below (at most one bit total, either pool).
+  function toggleRerollTarget(index: number) {
+    if (opponentUsed[index]) return;
+    setRerollTargets((current) => {
+      if (current.includes(index)) return [];
+      return rerollOwnTargets.length > 0 ? current : [index];
+    });
+  }
+
+  function toggleRerollOwnTarget(index: number) {
+    if (playerUsed[index] || selectedIndices.includes(index)) return;
+    setRerollOwnTargets((current) => {
+      if (current.includes(index)) return [];
+      return rerollTargets.length > 0 ? current : [index];
+    });
+  }
+
   function handleConfirmSelection() {
     if (selectedIndices.length === 0) return;
     if (playerFaces[selectedIndices[0]] === "action") {
@@ -825,8 +844,15 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   function handleSendActionMove() {
     void sendMove(selectedIndices, {
       ability: selectedAbility,
-      targets: selectedAbility === "flip" ? flipTargets : selectedAbility === "double" ? doubleTargets : [],
-      ownTargets: selectedAbility === "flip" ? flipOwnTargets : [],
+      targets:
+        selectedAbility === "flip"
+          ? flipTargets
+          : selectedAbility === "double"
+            ? doubleTargets
+            : selectedAbility === "reroll"
+              ? rerollTargets
+              : [],
+      ownTargets: selectedAbility === "flip" ? flipOwnTargets : selectedAbility === "reroll" ? rerollOwnTargets : [],
     });
   }
 
@@ -852,6 +878,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   // unconditionally put the player's own bits in the opponent's circle.
   const opponentCircleMove: StageMove | null =
     incomingMove && "respond" === turn ? { face: incomingMove.face, count: incomingMove.count, icon: incomingMove.icon } : opponentRestingMove;
+  const selectedAbilityEntry = availableAbilityOptions.find((entry) => entry.type === selectedAbility) ?? null;
 
   return (
     <div className="arena">
@@ -887,9 +914,9 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                       face={face}
                       multiplier={opponentMultipliers[index]}
                       iconUrl={bitIconUrl(opponentIcons[index])}
-                      selectable={pendingAbilityChoice && selectedAbility === "flip"}
-                      selected={flipTargets.includes(index)}
-                      onClick={() => toggleFlipTarget(index)}
+                      selectable={pendingAbilityChoice && ("flip" === selectedAbility || "reroll" === selectedAbility)}
+                      selected={"flip" === selectedAbility ? flipTargets.includes(index) : rerollTargets.includes(index)}
+                      onClick={() => ("flip" === selectedAbility ? toggleFlipTarget(index) : toggleRerollTarget(index))}
                     />
                   )}
                 </div>
@@ -1001,7 +1028,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
               </div>
             )}
 
-            {pendingAbilityChoice && (selectedAbility === "flip" || selectedAbility === "double") && (
+            {pendingAbilityChoice && (selectedAbility === "flip" || selectedAbility === "double" || selectedAbility === "reroll") && (
               <div className="arena__coins">
                 {playerFaces.map((face, index) => (
                   <div className="arena__pool-slot" key={index}>
@@ -1011,8 +1038,18 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                         multiplier={playerMultipliers[index]}
                         iconUrl={bitIconUrl(playerIcons[index])}
                         selectable
-                        selected={"flip" === selectedAbility ? flipOwnTargets.includes(index) : doubleTargets.includes(index)}
-                        onClick={() => ("flip" === selectedAbility ? toggleOwnFlipTarget(index) : toggleDoubleTarget(index))}
+                        selected={
+                          "flip" === selectedAbility
+                            ? flipOwnTargets.includes(index)
+                            : "double" === selectedAbility
+                              ? doubleTargets.includes(index)
+                              : rerollOwnTargets.includes(index)
+                        }
+                        onClick={() => {
+                          if ("flip" === selectedAbility) toggleOwnFlipTarget(index);
+                          else if ("double" === selectedAbility) toggleDoubleTarget(index);
+                          else toggleRerollOwnTarget(index);
+                        }}
                       />
                     )}
                   </div>
@@ -1023,61 +1060,95 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
             {pendingAbilityChoice && (
               <div className="arena__abilities">
                 <p className="arena__hint">Разыгрывается действие ×{selectedIndices.length}. Выбери способность:</p>
-                <div className="arena__ability-list">
-                  {availableAbilityOptions.length === 0 && (
-                    <p className="arena__hint">Нет доступных способностей — можно только сходить обычным ударом или защитой.</p>
-                  )}
-                  {availableAbilityOptions.map((option) => {
-                    const affordable = isAffordable(option, selectedIndices.length);
-                    const isSelected = selectedAbility === option.type;
-                    return (
-                      <button
-                        key={option.type}
-                        className={`arena__ability${isSelected ? " arena__ability--selected" : ""}`}
-                        disabled={!affordable}
-                        onClick={() => {
-                          // Re-clicking the already-selected ability (e.g. to
-                          // "confirm" the pick before moving on to targets —
-                          // a natural instinct, since this row is the only
-                          // visible "choose the ability" affordance) used to
-                          // silently wipe any targets already chosen, since
-                          // this ran unconditionally. Only actually switching
-                          // ability should reset targets picked for a
-                          // different one.
-                          if (option.type === selectedAbility) return;
-                          setSelectedAbility(option.type);
-                          setFlipTargets([]);
-                          setFlipOwnTargets([]);
-                          setDoubleTargets([]);
-                        }}
-                      >
-                        <span className="arena__ability-top">
-                          <span className="arena__ability-check" aria-hidden="true">
-                            {isSelected ? "✓" : ""}
-                          </span>
-                          <span className="arena__ability-label">{abilityLabels[option.type] ?? option.label}</span>
-                        </span>
-                        <span className="arena__ability-desc">{option.description}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {selectedAbility === "flip" && availableAbilityOptions.length > 0 && (
-                  <p className="arena__hint">
-                    Выбери до {selectedIndices.length} бит (свои или соперника), чтобы перевернуть их (
-                    {flipTargets.length + flipOwnTargets.length}/{selectedIndices.length})
-                  </p>
-                )}
-                {selectedAbility === "double" && availableAbilityOptions.length > 0 && (
-                  <p className="arena__hint">Выбери одну свою неиспользованную биту, чтобы удвоить её номинал ({doubleTargets.length}/1)</p>
-                )}
-                <div className="arena__move-actions">
-                  <button className="arena__action arena__action--secondary" disabled={busy} onClick={() => setPendingAbilityChoice(false)}>
-                    Назад
-                  </button>
-                  <button className="arena__action" disabled={busy || availableAbilityOptions.length === 0} onClick={handleSendActionMove}>
-                    Подтвердить способность
-                  </button>
+                <div className="arena__ability-row">
+                  <div className="arena__ability-grid">
+                    {availableAbilityOptions.length === 0 && (
+                      <p className="arena__hint">Нет доступных способностей — можно только сходить обычным ударом или защитой.</p>
+                    )}
+                    {availableAbilityOptions.map((entry) => {
+                      const affordable = isAffordable(entry, selectedIndices.length);
+                      const isSelected = selectedAbility === entry.type;
+                      return (
+                        <button
+                          key={entry.type}
+                          type="button"
+                          className={["arena__ability-tile", isSelected ? "arena__ability-tile--selected" : ""].filter(Boolean).join(" ")}
+                          disabled={!affordable}
+                          title={entry.label}
+                          onClick={() => {
+                            // Re-clicking the already-selected ability (e.g. to
+                            // "confirm" the pick before moving on to targets —
+                            // a natural instinct, since this tile is the only
+                            // visible "choose the ability" affordance) used to
+                            // silently wipe any targets already chosen, since
+                            // this ran unconditionally. Only actually switching
+                            // ability should reset targets picked for a
+                            // different one.
+                            if (entry.type === selectedAbility) return;
+                            setSelectedAbility(entry.type);
+                            setFlipTargets([]);
+                            setFlipOwnTargets([]);
+                            setDoubleTargets([]);
+                            setRerollTargets([]);
+                            setRerollOwnTargets([]);
+                          }}
+                        >
+                          {entry.iconName ? (
+                            <img className="arena__ability-icon" src={getIconUrl("abilities", entry.iconName)} alt={entry.label} />
+                          ) : (
+                            <span className="arena__ability-icon arena__ability-icon--placeholder" aria-hidden="true">
+                              ?
+                            </span>
+                          )}
+                          <span className="arena__ability-tile-label">{entry.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="arena__ability-confirm">
+                    <button className="arena__action arena__action--secondary" disabled={busy} onClick={() => setPendingAbilityChoice(false)}>
+                      Назад
+                    </button>
+                    <button className="arena__action" disabled={busy || availableAbilityOptions.length === 0} onClick={handleSendActionMove}>
+                      Подтвердить способность
+                    </button>
+                  </div>
+
+                  <div className="arena__ability-details">
+                    {selectedAbilityEntry ? (
+                      <>
+                        <h3 className="arena__ability-details-title">{selectedAbilityEntry.label}</h3>
+                        <p className="arena__ability-details-cost">
+                          {null === selectedAbilityEntry.actionCost
+                            ? "Цена: все выпавшие очки действия"
+                            : `Цена: ${selectedAbilityEntry.actionCost} очк. действия`}
+                        </p>
+                        {selectedAbilityEntry.description && (
+                          <p className="arena__ability-details-desc">{selectedAbilityEntry.description}</p>
+                        )}
+                        {selectedAbility === "flip" && (
+                          <p className="arena__hint">
+                            Выбери до {selectedIndices.length} бит (свои или соперника), чтобы перевернуть их (
+                            {flipTargets.length + flipOwnTargets.length}/{selectedIndices.length})
+                          </p>
+                        )}
+                        {selectedAbility === "double" && (
+                          <p className="arena__hint">
+                            Выбери одну свою неиспользованную биту, чтобы удвоить её номинал ({doubleTargets.length}/1)
+                          </p>
+                        )}
+                        {selectedAbility === "reroll" && (
+                          <p className="arena__hint">
+                            Выбери одну биту (свою или соперника), чтобы перебросить её на случайную сторону (
+                            {rerollTargets.length + rerollOwnTargets.length}/1)
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="arena__hint">Выбери способность</p>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
