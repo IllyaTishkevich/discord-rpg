@@ -377,7 +377,13 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     ]);
 
     const playerPending = "wait" === next.turn;
-    const opponentPending = null !== next.incomingMove;
+    // Same distinction as opponentCircleMove's own gating below: incomingMove
+    // is only genuinely the opponent's still-unresolved move when it's this
+    // viewer's turn to respond to it — when turn is "wait" instead (PvP),
+    // incomingMove describes the player's own pending lead, and there's
+    // nothing of the opponent's to hold back here (opponentNewlyUsed would
+    // be empty in that case anyway, since nothing on their side changed).
+    const opponentPending = null !== next.incomingMove && "respond" === next.turn;
 
     const playerToReveal = [...pendingRevealRef.current.player, ...playerNewlyUsed];
     pendingRevealRef.current.player = playerPending ? playerToReveal : [];
@@ -728,9 +734,15 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   // The opponent's own incoming lead (not yet resolved, still awaiting the
   // player's response) always takes priority over a merely-resting past
   // move — it's live and more current than anything already sitting there.
-  const opponentCircleMove: StageMove | null = incomingMove
-    ? { face: incomingMove.face, count: incomingMove.count, icon: incomingMove.icon }
-    : opponentRestingMove;
+  // Gated on turn === "respond": the backend's incomingMove is a symmetric
+  // description of whatever lead is currently pending (see
+  // BattleSerializer::exchangeMoveResultForViewer()'s own comment) — when
+  // it's PvP and turn === "wait" instead, that pending move is actually the
+  // player's own just-submitted lead, still waiting on the real opponent's
+  // response, not something the opponent played. Showing it here
+  // unconditionally put the player's own bits in the opponent's circle.
+  const opponentCircleMove: StageMove | null =
+    incomingMove && "respond" === turn ? { face: incomingMove.face, count: incomingMove.count, icon: incomingMove.icon } : opponentRestingMove;
 
   return (
     <div className="arena">
