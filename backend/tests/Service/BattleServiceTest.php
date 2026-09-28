@@ -55,7 +55,7 @@ class BattleServiceTest extends TestCase
             // gated behind isPvp(), and every scenario here is PvE (see class
             // docblock).
             httpClient: $this->createMock(HttpClientInterface::class),
-            wsRelayUrl: 'http://example.test/internal/publish',
+            botInternalUrl: 'http://example.test',
             botApiSecret: 'test-secret',
         );
     }

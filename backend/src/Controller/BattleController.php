@@ -15,6 +15,7 @@ use App\Exception\InvalidBattleStateException;
 use App\Exception\InvalidExchangeMoveException;
 use App\Exception\NoPendingThrowException;
 use App\Repository\BattleRepository;
+use App\Repository\UserRepository;
 use App\Serializer\BattleSerializer;
 use App\Service\BattleService;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -58,6 +59,45 @@ class BattleController extends AbstractApiController
         }
 
         return $this->json($this->serializer->battleForViewer($battle, $battle->getOpponentCharacter() === $character));
+    }
+
+    /**
+     * Activity-native equivalent of the bot's `/duel` command
+     * (BotPvpController::create()) — used by the in-Activity "Начать дуэль"
+     * picker (voice-channel participants filtered to actual characters via
+     * POST /api/characters/by-discord-ids). Unlike the bot command, this is
+     * JWT-authed as the challenger themselves, and separately DMs the
+     * challenged player (BattleService::notifyDuelChallenge()) since there's
+     * no Discord channel/interaction to reply into here.
+     */
+    #[Route('/pvp', name: 'battle_create_pvp', methods: ['POST'])]
+    public function createPvp(Request $request, UserRepository $userRepository, BattleRepository $battleRepository, BattleService $battleService): JsonResponse
+    {
+        $challenger = $this->requireCharacter();
+
+        $opponentDiscordId = $this->decodeJson($request)['opponentDiscordId'] ?? null;
+        if (!\is_string($opponentDiscordId)) {
+            return $this->json(['error' => 'Missing "opponentDiscordId".'], 400);
+        }
+
+        $opponent = $userRepository->findOneByDiscordId($opponentDiscordId)?->getCharacter();
+        if (null === $opponent) {
+            return $this->json(['error' => 'That player has no character yet.'], 404);
+        }
+        if ($opponent === $challenger) {
+            return $this->json(['error' => "You can't duel yourself."], 400);
+        }
+        if (null !== $battleRepository->findActivePvpFor($challenger)) {
+            return $this->json(['error' => 'You are already in or waiting on a duel.'], 409);
+        }
+        if (null !== $battleRepository->findActivePvpFor($opponent)) {
+            return $this->json(['error' => 'That player is already in or waiting on a duel.'], 409);
+        }
+
+        $battle = $battleService->createPvpChallenge($challenger, $opponent);
+        $battleService->notifyDuelChallenge($battle);
+
+        return $this->json($this->serializer->battleForViewer($battle, false), 201);
     }
 
     #[Route('/{id}', name: 'battle_show', methods: ['GET'])]

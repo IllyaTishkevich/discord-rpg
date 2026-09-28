@@ -20,4 +20,18 @@ class UserRepository extends ServiceEntityRepository
     {
         return $this->findOneBy(['discordId' => $discordId]);
     }
+
+    /**
+     * @param string[] $discordIds
+     *
+     * @return User[]
+     */
+    public function findByDiscordIds(array $discordIds): array
+    {
+        if ([] === $discordIds) {
+            return [];
+        }
+
+        return $this->findBy(['discordId' => $discordIds]);
+    }
 }

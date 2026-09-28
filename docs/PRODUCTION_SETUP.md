@@ -156,7 +156,7 @@ ACTIVITY_PREVIEW_URL=https://discord-rpg.example.com
 
 # Real-time синхронизация PvP-дуэлей (см. B.14) — без этого блока дуэли
 # всё ещё работают, просто на медленном фоновом поллинге.
-WS_RELAY_URL=http://127.0.0.1:3002/internal/publish
+BOT_INTERNAL_URL=http://127.0.0.1:3002
 ```
 
 `bot/.env`:
@@ -426,7 +426,7 @@ sudo systemctl restart discord-rpg-bot
 Ничего дополнительно ставить/скачивать не нужно — `ws`/`jsonwebtoken` устанавливаются вместе с остальными зависимостями бота (`npm install`, B.11/B.13).
 
 Нужно только:
-1. **Переменные окружения** — уже описаны в B.5 (`backend/.env.local`: `WS_RELAY_URL`; `bot/.env`: `WS_PORT`; `activity/.env.local`: `VITE_WS_URL`).
+1. **Переменные окружения** — уже описаны в B.5 (`backend/.env.local`: `BOT_INTERNAL_URL`; `bot/.env`: `WS_PORT`; `activity/.env.local`: `VITE_WS_URL`).
 2. **Проксирование в nginx** — блок `location /ws` уже добавлен в B.8.
 
 > Отдельный Discord Developer Portal URL Mapping не нужен — уже существующий маппинг корневого префикса `/` (A.2) проксирует `/.proxy/<любой путь>` на тот же домен, сохраняя путь как есть, так что `/.proxy/ws` (см. `activity/src/api/realtime.ts`) автоматически приходит на `wss://discord-rpg.example.com/ws`.

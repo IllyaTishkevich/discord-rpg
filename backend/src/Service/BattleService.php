@@ -108,8 +108,10 @@ class BattleService
         // PvP alike — see refreshMoveDeadline()/applyMoveTimeoutIfExpired().
         #[Autowire(env: 'int:ROUND_TIMEOUT_SECONDS')] private readonly int $roundTimeoutSeconds,
         private readonly HttpClientInterface $httpClient,
-        // Real-time PvP duel sync — see publishPvpUpdate()'s docblock.
-        #[Autowire(env: 'WS_RELAY_URL')] private readonly string $wsRelayUrl,
+        // Base URL of the bot process's own tiny HTTP server
+        // (bot/src/realtime/server.js) — see publishPvpUpdate()'s and
+        // notifyDuelChallenge()'s docblocks for the two things it's used for.
+        #[Autowire(env: 'BOT_INTERNAL_URL')] private readonly string $botInternalUrl,
         #[Autowire(env: 'BOT_API_SECRET')] private readonly string $botApiSecret,
     ) {
     }
@@ -119,21 +121,47 @@ class BattleService
      * of waiting for their next poll tick (activity/src/api/realtime.ts) —
      * called after every PvP state change (throwRound(), a committed lead/
      * respond, a timeout auto-pass, a round finishing). Relayed through the
-     * bot process's own tiny WebSocket server (bot/src/realtime/server.js),
-     * which is the only thing here that holds long-lived connections — a
-     * plain PHP-FPM request/response can't. The relay carries no battle
-     * data, just enough to know which battle to re-fetch — GET /battles/{id}
-     * (already participant-gated) remains the only source of truth for the
-     * actual state. Best-effort: if the bot process is unreachable, the
-     * Activity's own poll fallback (activity/src/api/realtime.ts) still
-     * picks up the move within a few seconds, so a relay hiccup must never
-     * fail the request that triggered it.
+     * bot process's own tiny WebSocket server, which is the only thing here
+     * that holds long-lived connections — a plain PHP-FPM request/response
+     * can't. The relay carries no battle data, just enough to know which
+     * battle to re-fetch — GET /battles/{id} (already participant-gated)
+     * remains the only source of truth for the actual state. Best-effort: if
+     * the bot process is unreachable, the Activity's own poll fallback
+     * (activity/src/api/realtime.ts) still picks up the move within a few
+     * seconds, so a relay hiccup must never fail the request that triggered it.
      */
     private function publishPvpUpdate(Battle $battle): void
     {
+        $this->postToBot('/internal/publish', ['battleId' => $battle->getId()]);
+    }
+
+    /**
+     * DMs the challenged player about a new PvP duel invitation created
+     * directly from the Activity (BattleController's own /pvp endpoint) —
+     * unlike the `/duel` bot command (bot/src/commands/duel.js), which
+     * already posts its own in-channel message, so calling this from
+     * createPvpChallenge() itself would double-notify that path. Reuses the
+     * exact same Accept/Decline buttons (bot/src/interactions/duelButtons.js
+     * doesn't care whether the message it's attached to was a channel reply
+     * or a DM). Best-effort, same as publishPvpUpdate() — a DM failing
+     * (blocked DMs, etc.) must never break challenge creation itself; the
+     * challenge still shows up next time the challenged player opens the
+     * Activity (see BattleController::myActivePvp()).
+     */
+    public function notifyDuelChallenge(Battle $battle): void
+    {
+        $this->postToBot('/internal/duel-challenge', [
+            'battleId' => $battle->getId(),
+            'challengerDiscordId' => $battle->getCharacter()->getUser()->getDiscordId(),
+            'opponentDiscordId' => $battle->getOpponentCharacter()->getUser()->getDiscordId(),
+        ]);
+    }
+
+    private function postToBot(string $path, array $json): void
+    {
         try {
-            $response = $this->httpClient->request('POST', $this->wsRelayUrl, [
-                'json' => ['battleId' => $battle->getId()],
+            $response = $this->httpClient->request('POST', $this->botInternalUrl.$path, [
+                'json' => $json,
                 'headers' => ['X-Bot-Secret' => $this->botApiSecret],
                 'timeout' => 2,
             ]);
@@ -142,7 +170,7 @@ class BattleService
             // would silently never be sent.
             $response->getStatusCode();
         } catch (HttpExceptionInterface) {
-            // Swallowed on purpose — see docblock above.
+            // Swallowed on purpose — see the two callers' docblocks.
         }
     }
 

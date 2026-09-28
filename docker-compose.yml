@@ -24,7 +24,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: "postgresql://discord_rpg:!ChangeMe!@database:5432/discord_rpg?serverVersion=16&charset=utf8"
-      WS_RELAY_URL: "http://host.docker.internal:3002/internal/publish"
+      BOT_INTERNAL_URL: "http://host.docker.internal:3002"
 
   nginx:
     image: nginx:alpine

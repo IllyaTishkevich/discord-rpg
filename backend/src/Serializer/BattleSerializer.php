@@ -133,6 +133,12 @@ class BattleSerializer
             'youReady' => $viewerIsOpponentSide ? $battle->isOpponentReady() : $battle->isCharacterReady(),
             'opponentReady' => $viewerIsOpponentSide ? $battle->isCharacterReady() : $battle->isOpponentReady(),
             'opponentAccepted' => $battle->isOpponentAccepted(),
+            // Whether this viewer is the side that sent the challenge (as
+            // opposed to the one who received it) — the Activity uses this
+            // to decide whether a still-unaccepted duel should read as "you
+            // challenged them, waiting" or "you were challenged, respond"
+            // (see DuelLobbyScreen.tsx).
+            'youAreChallenger' => !$viewerIsOpponentSide,
         ];
     }
 

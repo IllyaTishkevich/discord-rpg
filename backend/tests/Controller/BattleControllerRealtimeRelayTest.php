@@ -55,7 +55,7 @@ class BattleControllerRealtimeRelayTest extends WebTestCase
         // The challenger readying up too flips the battle to in_progress and
         // throws the first round automatically (BattleService::markReady()),
         // which is where publishPvpUpdate() first fires for real, against
-        // whatever WS_RELAY_URL actually resolves to in this environment —
+        // whatever BOT_INTERNAL_URL actually resolves to in this environment —
         // nothing is listening on it here, so this only passes if the
         // resulting transport exception is genuinely swallowed.
         $client->request('POST', \sprintf('/api/battles/%d/join', $battle->getId()), [], [], $challengerAuth);

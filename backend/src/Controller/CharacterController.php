@@ -8,6 +8,7 @@ use App\Entity\Character;
 use App\Entity\User;
 use App\Repository\CharacterClassRepository;
 use App\Repository\CharacterRepository;
+use App\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -71,6 +72,43 @@ class CharacterController extends AbstractApiController
         }
 
         return $this->json($this->serializeCharacter($character));
+    }
+
+    /**
+     * Who among a batch of Discord IDs has a character — the Activity's
+     * "Начать дуэль" flow uses this to filter the current voice channel's
+     * participant list (fetched client-side via the Discord SDK's
+     * getInstanceConnectedParticipants(), see activity/src/discord/sdk.ts)
+     * down to actual duel candidates. Never returns the caller's own entry —
+     * you can't challenge yourself.
+     */
+    #[Route('/by-discord-ids', name: 'character_lookup_by_discord_ids', methods: ['POST'])]
+    public function lookupByDiscordIds(Request $request, UserRepository $userRepository): JsonResponse
+    {
+        /** @var User $me */
+        $me = $this->getUser();
+
+        $discordIds = $this->decodeJson($request)['discordIds'] ?? null;
+        if (!\is_array($discordIds)) {
+            return $this->json(['error' => 'Missing "discordIds".'], 400);
+        }
+        $discordIds = array_values(array_filter(array_map('strval', $discordIds), static fn (string $id) => $id !== $me->getDiscordId()));
+
+        $candidates = [];
+        foreach ($userRepository->findByDiscordIds($discordIds) as $user) {
+            $character = $user->getCharacter();
+            if (null === $character) {
+                continue;
+            }
+            $candidates[] = [
+                'discordId' => $user->getDiscordId(),
+                'displayName' => $user->getDisplayName(),
+                'level' => $character->getLevel(),
+                'className' => $character->getCharacterClass()->getName(),
+            ];
+        }
+
+        return $this->json($candidates);
     }
 
     private function serializeCharacter(Character $character): array
