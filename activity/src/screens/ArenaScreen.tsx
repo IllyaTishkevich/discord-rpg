@@ -115,6 +115,10 @@ const FLIGHT_DURATION_MS = 450;
 // on to the used-bit log panel — gives the player a beat to register what
 // just happened instead of it vanishing into the log instantly.
 const CIRCLE_REST_MS = 500;
+// How long to wait before auto-passing a turn with no legal move (see the
+// effect below) — long enough to actually register what the opponent's
+// last move was before getting swept straight past your own turn.
+const AUTO_PASS_DELAY_MS = 2000;
 
 function FlyingBitCoin({ bit }: { bit: FlyingBit }) {
   const [arrived, setArrived] = useState(false);
@@ -229,6 +233,14 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   // inside the PvP poll's setInterval closure across repeated ticks.
   const lastPlayerUsedRef = useRef<boolean[]>([]);
   const lastOpponentUsedRef = useRef<boolean[]>([]);
+  // Indices newly marked used by a side whose move hasn't actually resolved
+  // yet — my own lead still awaiting the opponent's separate response (PvP,
+  // turn === "wait"), or the opponent's/bot's own lead still awaiting mine
+  // (incomingMove present) — held back from scheduleCircleToLog() until
+  // that exchange genuinely resolves, instead of flying to the log
+  // immediately just because the bit got flagged used. See
+  // applyExchangeSnapshot()'s use of this below.
+  const pendingRevealRef = useRef<{ player: number[]; opponent: number[] }>({ player: [], opponent: [] });
   // A used bit only appears in its log panel once "revealed" — i.e. once
   // its circle → log flight (scheduleCircleToLog below) has landed. Parallel
   // to playerUsed/opponentUsed, but lags behind them during that flight.
@@ -313,7 +325,18 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   // opponent's side, always — the player's own only as a fallback, see
   // toggleOwnBit) fly pool → circle first; each side's newly-used group then
   // becomes its resting move (shown in the circle) and, after a beat, flies
-  // on to its log panel via scheduleCircleToLog, which empties the circle again.
+  // on to its log panel via scheduleCircleToLog, which empties the circle
+  // again — but only once that bit's own exchange has actually resolved.
+  // A side can be marked "used" while its move is still pending someone
+  // else's response — my own just-submitted lead (PvP, turn === "wait",
+  // waiting on the real opponent) or the opponent's/bot's own lead waiting
+  // on mine (incomingMove present, e.g. mid PvE auto-advance chain, right
+  // after my own lead resolved and the bot immediately led the next
+  // exchange in the same response) — so those newly-used indices are held
+  // in pendingRevealRef instead of scheduled immediately, and only flushed
+  // (plus whatever's newly used this call) once that side is no longer
+  // pending. Without this, a still-pending move's bits would fly into the
+  // log before the exchange they belong to ever resolved.
   function applyExchangeSnapshot(next: {
     playerFaces: BitFace[];
     opponentFaces: BitFace[];
@@ -323,6 +346,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     opponentMultipliers: number[];
     playerIcons: (string | null)[];
     opponentIcons: (string | null)[];
+    turn: ExchangeTurn;
+    incomingMove: IncomingMove | null;
   }) {
     const playerNewlyUsed: number[] = [];
     next.playerUsed.forEach((used, index) => {
@@ -350,8 +375,35 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
         opponentCircleRef.current,
       ),
     ]);
-    scheduleCircleToLog("player", playerNewlyUsed, next.playerFaces, next.playerMultipliers, next.playerIcons, playerMove);
-    scheduleCircleToLog("opponent", opponentNewlyUsed, next.opponentFaces, next.opponentMultipliers, next.opponentIcons, opponentMove);
+
+    const playerPending = "wait" === next.turn;
+    const opponentPending = null !== next.incomingMove;
+
+    const playerToReveal = [...pendingRevealRef.current.player, ...playerNewlyUsed];
+    pendingRevealRef.current.player = playerPending ? playerToReveal : [];
+    const opponentToReveal = [...pendingRevealRef.current.opponent, ...opponentNewlyUsed];
+    pendingRevealRef.current.opponent = opponentPending ? opponentToReveal : [];
+
+    if (!playerPending) {
+      scheduleCircleToLog(
+        "player",
+        playerToReveal,
+        next.playerFaces,
+        next.playerMultipliers,
+        next.playerIcons,
+        aggregateMove(playerToReveal, next.playerFaces, next.playerMultipliers, next.playerIcons),
+      );
+    }
+    if (!opponentPending) {
+      scheduleCircleToLog(
+        "opponent",
+        opponentToReveal,
+        next.opponentFaces,
+        next.opponentMultipliers,
+        next.opponentIcons,
+        aggregateMove(opponentToReveal, next.opponentFaces, next.opponentMultipliers, next.opponentIcons),
+      );
+    }
 
     lastPlayerUsedRef.current = next.playerUsed;
     lastOpponentUsedRef.current = next.opponentUsed;
@@ -381,6 +433,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setBattle(result.battle);
       lastPlayerUsedRef.current = result.playerUsed ?? result.playerFaces.map(() => false);
       lastOpponentUsedRef.current = result.opponentUsed ?? result.opponentFaces.map(() => false);
+      pendingRevealRef.current = { player: [], opponent: [] };
       setPlayerFaces(result.playerFaces);
       setOpponentFaces(result.opponentFaces);
       setPlayerUsed(lastPlayerUsedRef.current);
@@ -419,7 +472,10 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     setError(null);
     try {
       const response = await submitExchangeMove(battle.id, indices, ability);
-      applyExchangeSnapshot(response);
+      // turn/incomingMove are omitted once roundComplete — nothing is
+      // "pending" any more at that point, so any not-yet-revealed bits
+      // should flush right away (see applyExchangeSnapshot's docblock).
+      applyExchangeSnapshot({ ...response, turn: response.turn ?? "lead", incomingMove: response.incomingMove ?? null });
       setExchangeLog((current) => [...current, ...response.newExchanges]);
       setBattle(response.battle);
       setSelectedIndices([]);
@@ -481,6 +537,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
         opponentMultipliers: updated.exchange.opponentMultipliers,
         playerIcons: updated.exchange.playerIcons,
         opponentIcons: updated.exchange.opponentIcons,
+        turn: updated.exchange.turn ?? "lead",
+        incomingMove: updated.exchange.incomingMove,
       });
       setTurn(updated.exchange.turn);
       setIncomingMove(updated.exchange.incomingMove);
@@ -537,6 +595,39 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
     // render-scoped state, so a fresh reference each render isn't needed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [battle.mode, battle.id, turn, phase]);
+
+  // Auto-passes a lead or respond turn the player has no legal bit for at
+  // all — every remaining bit is already used, empty-faced, or (while
+  // responding, which only ever accepts defense) simply the wrong face.
+  // Forcing a manual "Пропустить ход" click for a decision that was never
+  // actually available to make would just be busywork every single time.
+  // Waits AUTO_PASS_DELAY_MS first so the player actually gets to register
+  // what the opponent's move just was before getting swept past their own
+  // turn — the cleanup below cancels that wait if anything changes first
+  // (the opponent's next move arriving, the round ending, etc.), so this
+  // never fires against stale conditions.
+  // Never fires mid-selection (pendingAbilityChoice) — the player's picked
+  // bits haven't been submitted yet, so playerUsed/playerFaces don't
+  // reflect them, and hasLegalMove still correctly sees them as available.
+  useEffect(() => {
+    if (busy || phase !== "playing" || pendingAbilityChoice || ("lead" !== turn && "respond" !== turn)) {
+      return;
+    }
+    const hasLegalMove = playerFaces.some(
+      (face, index) => !playerUsed[index] && "empty" !== face && ("respond" !== turn || "defense" === face),
+    );
+    if (hasLegalMove) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void sendMove([]);
+    }, AUTO_PASS_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // sendMove itself sets `busy` synchronously before its first await, and
+    // its own success always moves `turn` away from "lead"/"respond" (or
+    // ends the round) — so this can't re-fire for the same decision twice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turn, playerFaces, playerUsed, pendingAbilityChoice, busy, phase]);
 
   // Fires once the per-move deadline (battle.roundDeadlineAt) reaches zero,
   // for PvE/event and PvP alike. Never resubmits the stale local selection
