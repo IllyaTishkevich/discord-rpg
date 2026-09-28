@@ -4,6 +4,7 @@ namespace App\Battle;
 
 use App\Enum\AbilityType;
 use App\Enum\BitFace;
+use App\Repository\AbilityRepository;
 
 /**
  * Combat engine v2 (docs/COMBAT_V2_DESIGN.md): after both sides throw their
@@ -46,9 +47,20 @@ final class ExchangeResolver
     /** @var Exchange[] */
     private array $exchanges;
 
-    public function __construct(?\Closure $randomBool = null)
-    {
+    public function __construct(
+        ?\Closure $randomBool = null,
+        private readonly ?AbilityRepository $abilityRepository = null,
+    ) {
         $this->randomBool = $randomBool ?? static fn (): bool => 1 === random_int(0, 1);
+    }
+
+    /**
+     * See InteractiveExchangeEngine::costFor() — same reasoning, same
+     * fallback for the no-repository (unit test) case.
+     */
+    private function costFor(AbilityType $type): ?int
+    {
+        return null !== $this->abilityRepository ? $this->abilityRepository->costFor($type) : $type->fixedCost();
     }
 
     /**
@@ -216,7 +228,7 @@ final class ExchangeResolver
             return $this->applyFlip($isActingSidePlayer, $amount, $choice->targets);
         }
 
-        $cost = $choice->ability->fixedCost() ?? $amount;
+        $cost = $this->costFor($choice->ability) ?? $amount;
         if ($amount < $cost) {
             // Not enough banked in this single move to actually afford it —
             // a later move this round may have enough; for now just flip.

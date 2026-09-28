@@ -287,6 +287,75 @@ class InteractiveExchangeEngineTest extends TestCase
         self::assertSame(BitFace::Attack, $state->opponentThrows[0]->thrownFace);
     }
 
+    public function testRerollWithAnOwnDeclaredTargetRerollsThatOneBitAndLeavesOthersAlone(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        // thrownFace deliberately isn't faceA or faceB — impossible from a
+        // real throw, but lets the test detect "was this actually
+        // rerolled" without needing to control BitThrow::random()'s RNG:
+        // after reroll it must land on one of the two real faces.
+        $ownBit = new BitThrow(BitFace::Attack, BitFace::Defense, false, false, BitFace::Action, false);
+        $opponentBit = new BitThrow(BitFace::Defense, BitFace::Defense, false, false, BitFace::Defense, false);
+
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Action, true), $ownBit],
+            [$opponentBit],
+        );
+
+        ['state' => $state] = $engine->submitLead(
+            $state,
+            [0],
+            new AbilityChoice(AbilityType::Reroll, ownTargets: [1]),
+            AbilityChoice::flip(),
+        );
+
+        self::assertContains($state->playerThrows[1]->thrownFace, [BitFace::Attack, BitFace::Defense]);
+        self::assertSame(BitFace::Defense, $state->opponentThrows[0]->thrownFace);
+    }
+
+    public function testRerollCanTargetAnOpponentBitInstead(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        $opponentBit = new BitThrow(BitFace::Attack, BitFace::Defense, false, false, BitFace::Action, false);
+
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Action, true)],
+            [$opponentBit, $this->bit(BitFace::Defense)],
+        );
+
+        ['state' => $state] = $engine->submitLead(
+            $state,
+            [0],
+            new AbilityChoice(AbilityType::Reroll, targets: [0]),
+            AbilityChoice::flip(),
+        );
+
+        self::assertContains($state->opponentThrows[0]->thrownFace, [BitFace::Attack, BitFace::Defense]);
+    }
+
+    public function testRerollWithNoDeclaredTargetAutoPicksOneOfTheCastersOwnBits(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        // thrownFace here IS a real option (faceA) — needed so chooseBitTargets'
+        // attack/defense auto-pick priority actually finds this bit — but
+        // thrownAdvantage is deliberately bogus (both real options are
+        // advantage=false): after a genuine reroll it must always come back
+        // false, which is what proves this bit was actually touched, since
+        // thrownFace alone could legitimately land on the same face again.
+        $ownBit = new BitThrow(BitFace::Attack, BitFace::Defense, false, false, BitFace::Attack, true);
+        $opponentBit = new BitThrow(BitFace::Defense, BitFace::Defense, false, false, BitFace::Defense, false);
+
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Action, true), $ownBit],
+            [$opponentBit],
+        );
+
+        ['state' => $state] = $engine->submitLead($state, [0], new AbilityChoice(AbilityType::Reroll), AbilityChoice::flip());
+
+        self::assertFalse($state->playerThrows[1]->thrownAdvantage);
+        self::assertSame(BitFace::Defense, $state->opponentThrows[0]->thrownFace);
+    }
+
     public function testPassLeadHandsInitiativeToTheBotWithoutConsumingBits(): void
     {
         $engine = new InteractiveExchangeEngine();

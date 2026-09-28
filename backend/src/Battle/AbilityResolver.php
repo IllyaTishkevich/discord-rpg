@@ -5,6 +5,7 @@ namespace App\Battle;
 use App\Enum\AbilityType;
 use App\Enum\BitFace;
 use App\Exception\InsufficientActionPointsException;
+use App\Repository\AbilityRepository;
 
 /**
  * Applies the effect of a chosen combat ability. `assertAffordable()` and
@@ -24,9 +25,14 @@ use App\Exception\InsufficientActionPointsException;
  */
 final class AbilityResolver
 {
+    public function __construct(
+        private readonly ?AbilityRepository $abilityRepository = null,
+    ) {
+    }
+
     public function assertAffordable(AbilityChoice $choice, int $rolledActionCount): void
     {
-        $cost = $choice->ability->fixedCost();
+        $cost = null !== $this->abilityRepository ? $this->abilityRepository->costFor($choice->ability) : $choice->ability->fixedCost();
         if (null !== $cost && $rolledActionCount < $cost) {
             throw new InsufficientActionPointsException(sprintf(
                 '%s requires %d action point(s), but only %d were rolled.',

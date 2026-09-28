@@ -53,6 +53,19 @@ class Ability
     private ?string $description = null;
 
     /**
+     * Cost in action points to activate this ability — the authoritative
+     * value battle resolution actually charges (AbilityRepository::costFor(),
+     * read by InteractiveExchangeEngine/ExchangeResolver/AbilityResolver
+     * instead of the old hardcoded AbilityType::fixedCost(), which now only
+     * serves as the fallback for code paths with no repository at hand,
+     * such as unit tests). Null means "variable" — the ability spends
+     * however many action points were rolled, uncapped (Flip,
+     * UnblockableDamage); every other ability has a real fixed cost here.
+     */
+    #[ORM\Column(nullable: true)]
+    private ?int $actionCost = null;
+
+    /**
      * Not persisted — Vich reads this on flush to store the file and fill
      * iconName/iconSize, then clears it (see Monster::$iconFile).
      */
@@ -121,6 +134,18 @@ class Ability
     public function setDescription(?string $description): static
     {
         $this->description = $description;
+
+        return $this;
+    }
+
+    public function getActionCost(): ?int
+    {
+        return $this->actionCost;
+    }
+
+    public function setActionCost(?int $actionCost): static
+    {
+        $this->actionCost = $actionCost;
 
         return $this;
     }

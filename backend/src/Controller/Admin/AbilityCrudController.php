@@ -10,6 +10,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ImageField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\IntegerField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextareaField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use Vich\UploaderBundle\Form\Type\VichImageType;
@@ -36,8 +37,10 @@ class AbilityCrudController extends AbstractCrudController
         yield TextField::new('label', 'Название')
             ->setHelp('Показывается игроку в Activity (выбор способности) — GET /api/abilities.');
         yield TextareaField::new('description', 'Описание')
-            ->setHelp('Что делает способность — только для админки, в бой не попадает.')
+            ->setHelp('Что делает способность — показывается игроку в Activity рядом с ценой.')
             ->hideOnIndex();
+        yield IntegerField::new('actionCost', 'Цена (очки действия)')
+            ->setHelp('Сколько очков действия стоит применить способность — используется в бою. Оставь пустым для "переменной" цены (как у Переворота и Неблокируемого урона — тратится ровно столько очков, сколько выпало).');
         yield ImageField::new('iconName', 'Иконка')
             ->setBasePath('/uploads/abilities')
             ->onlyOnIndex();

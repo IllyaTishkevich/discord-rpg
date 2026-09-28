@@ -23,6 +23,8 @@ class AbilityController extends AbstractApiController
                 'type' => $ability->getType()->value,
                 'label' => $ability->getLabel(),
                 'description' => $ability->getDescription(),
+                'actionCost' => $ability->getActionCost(),
+                'iconName' => $ability->getIconName(),
             ],
             $abilityRepository->findAll(),
         ));

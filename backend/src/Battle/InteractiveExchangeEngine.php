@@ -5,6 +5,7 @@ namespace App\Battle;
 use App\Enum\AbilityType;
 use App\Enum\BitFace;
 use App\Exception\InvalidExchangeMoveException;
+use App\Repository\AbilityRepository;
 
 /**
  * Step-by-step version of the combat v2 exchange sequence
@@ -38,9 +39,22 @@ final class InteractiveExchangeEngine
 {
     private \Closure $randomBool;
 
-    public function __construct(?\Closure $randomBool = null)
-    {
+    public function __construct(
+        ?\Closure $randomBool = null,
+        private readonly ?AbilityRepository $abilityRepository = null,
+    ) {
         $this->randomBool = $randomBool ?? static fn (): bool => 1 === random_int(0, 1);
+    }
+
+    /**
+     * The authoritative cost (see AbilityRepository::costFor()) when a
+     * repository is available (always true in production — only unit tests
+     * construct this class without one, in which case AbilityType's own
+     * hardcoded fixedCost() is what they're actually testing against).
+     */
+    private function costFor(AbilityType $type): ?int
+    {
+        return null !== $this->abilityRepository ? $this->abilityRepository->costFor($type) : $type->fixedCost();
     }
 
     /**
@@ -612,7 +626,7 @@ final class InteractiveExchangeEngine
             return $this->applyFlip($state, $isActingSidePlayer, $amount, $choice->targets, $choice->ownTargets);
         }
 
-        $cost = $choice->ability->fixedCost() ?? $amount;
+        $cost = $this->costFor($choice->ability) ?? $amount;
         if ($amount < $cost) {
             return $this->applyFlip($state, $isActingSidePlayer, $amount, $choice->targets, $choice->ownTargets);
         }
@@ -625,7 +639,7 @@ final class InteractiveExchangeEngine
 
         $bonus = match ($choice->ability) {
             AbilityType::UnblockableDamage => $cost,
-            AbilityType::Reroll => $this->applyReroll($state, $isActingSidePlayer),
+            AbilityType::Reroll => $this->applyReroll($state, $isActingSidePlayer, $choice->targets, $choice->ownTargets),
             AbilityType::DamageMirror => $this->activateMirror($state, $isActingSidePlayer),
             AbilityType::Destroy => $this->applyDestroy($state, $isActingSidePlayer, $choice->targets),
             AbilityType::Double => $this->applyDouble($state, $isActingSidePlayer, $choice->targets),
@@ -791,23 +805,69 @@ final class InteractiveExchangeEngine
         return $chosen;
     }
 
-    private function applyReroll(ExchangeRoundState $state, bool $isActingSidePlayer): int
+    /**
+     * Re-throws exactly one not-yet-activated bit to a genuinely new random
+     * face (BitThrow::random() — a fresh 50/50, unlike Flip's deterministic
+     * toggle to the other, already-fixed side) — the caster's own bit if
+     * $declaredOwnTargets names a valid one (checked first, same
+     * never-auto-filled reasoning as Flip's own targets), else an opponent
+     * bit from $declaredTargets. With no valid declared target at all (the
+     * bot's own path, or a player who confirmed without picking one),
+     * auto-picks one of the caster's own bits by the usual attack->defense
+     * priority — preserving Reroll's old self-only spirit now that it
+     * targets one bit instead of the whole hand.
+     *
+     * @param int[] $declaredTargets
+     * @param int[] $declaredOwnTargets
+     */
+    private function applyReroll(ExchangeRoundState $state, bool $isActingSidePlayer, array $declaredTargets = [], array $declaredOwnTargets = []): int
     {
-        if ($isActingSidePlayer) {
-            foreach ($state->playerThrows as $i => $throw) {
-                if (!$state->playerUsed[$i]) {
-                    $state->playerThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB, $throw->iconA, $throw->iconB);
+        $ownThrows = $isActingSidePlayer ? $state->playerThrows : $state->opponentThrows;
+        $ownUsed = $isActingSidePlayer ? $state->playerUsed : $state->opponentUsed;
+
+        foreach ($declaredOwnTargets as $i) {
+            if (isset($ownThrows[$i]) && !($ownUsed[$i] ?? true)) {
+                $rerolled = $this->rerollThrow($ownThrows[$i]);
+                if ($isActingSidePlayer) {
+                    $state->playerThrows[$i] = $rerolled;
+                } else {
+                    $state->opponentThrows[$i] = $rerolled;
                 }
+
+                return 0;
             }
-        } else {
-            foreach ($state->opponentThrows as $i => $throw) {
-                if (!$state->opponentUsed[$i]) {
-                    $state->opponentThrows[$i] = BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB, $throw->iconA, $throw->iconB);
+        }
+
+        $opponentThrows = $isActingSidePlayer ? $state->opponentThrows : $state->playerThrows;
+        $opponentUsed = $isActingSidePlayer ? $state->opponentUsed : $state->playerUsed;
+        foreach ($declaredTargets as $i) {
+            if (isset($opponentThrows[$i]) && !($opponentUsed[$i] ?? true)) {
+                $rerolled = $this->rerollThrow($opponentThrows[$i]);
+                if ($isActingSidePlayer) {
+                    $state->opponentThrows[$i] = $rerolled;
+                } else {
+                    $state->playerThrows[$i] = $rerolled;
                 }
+
+                return 0;
+            }
+        }
+
+        foreach ($this->chooseBitTargets([], $ownThrows, $ownUsed, 1) as $i) {
+            $rerolled = $this->rerollThrow($ownThrows[$i]);
+            if ($isActingSidePlayer) {
+                $state->playerThrows[$i] = $rerolled;
+            } else {
+                $state->opponentThrows[$i] = $rerolled;
             }
         }
 
         return 0;
+    }
+
+    private function rerollThrow(BitThrow $throw): BitThrow
+    {
+        return BitThrow::random($throw->faceA, $throw->faceB, $throw->advantageA, $throw->advantageB, $throw->multiplierA, $throw->multiplierB, $throw->iconA, $throw->iconB);
     }
 
     private function activateMirror(ExchangeRoundState $state, bool $isActingSidePlayer): int
