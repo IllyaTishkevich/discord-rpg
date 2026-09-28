@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import jwt from "jsonwebtoken";
 import { WebSocketServer } from "ws";
 
@@ -11,10 +12,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * Real-time PvP duel sync (see backend's BattleService::publishPvpUpdate()),
  * relayed through this always-running bot process instead of a separate hub
  * — a plain PHP-FPM request/response can't hold a persistent connection the
- * way this Node process already does for the Discord gateway.
+ * way this Node process already does for the Discord gateway. Also backs
+ * duel challenges created directly from the Activity (see
+ * handleDuelChallenge() below), since posting the Accept/Decline DM needs
+ * the same always-logged-in `client`.
  *
  * POST /internal/publish (backend -> here, X-Bot-Secret authenticated):
  * broadcasts {battleId} to every socket currently subscribed to that battle.
+ *
+ * POST /internal/duel-challenge (backend -> here, X-Bot-Secret authenticated):
+ * DMs the challenged player an Accept/Decline embed — see
+ * BattleService::notifyDuelChallenge()'s docblock for why this is a DM
+ * rather than a channel reply (there's no Discord interaction/channel
+ * context for a challenge created from inside the Activity).
  *
  * WebSocket /ws (Activity -> here): the client's first message must be
  * {type:"subscribe", battleId, token}, where token is the same JWT the
@@ -60,31 +70,71 @@ async function isParticipant(battleId, discordId) {
   }
 }
 
-function handlePublish(req, res) {
+function readBody(req) {
+  return new Promise((resolve) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => resolve(body));
+  });
+}
+
+function checkBotSecret(req, res) {
   if (req.headers["x-bot-secret"] !== process.env.BOT_API_SECRET) {
     res.writeHead(403).end();
-    return;
+    return false;
   }
+  return true;
+}
 
-  let body = "";
-  req.on("data", (chunk) => {
-    body += chunk;
-  });
-  req.on("end", () => {
-    try {
-      const { battleId } = JSON.parse(body);
-      const sockets = subscribersByBattle.get(battleId);
-      if (sockets) {
-        const payload = JSON.stringify({ battleId });
-        for (const socket of sockets) {
-          socket.send(payload);
-        }
+async function handlePublish(req, res) {
+  if (!checkBotSecret(req, res)) return;
+
+  try {
+    const { battleId } = JSON.parse(await readBody(req));
+    const sockets = subscribersByBattle.get(battleId);
+    if (sockets) {
+      const payload = JSON.stringify({ battleId });
+      for (const socket of sockets) {
+        socket.send(payload);
       }
-    } catch {
-      // Malformed publish body — nothing to broadcast, still ack below.
     }
-    res.writeHead(204).end();
-  });
+  } catch {
+    // Malformed publish body — nothing to broadcast, still ack below.
+  }
+  res.writeHead(204).end();
+}
+
+async function handleDuelChallenge(req, res, client) {
+  if (!checkBotSecret(req, res)) return;
+
+  try {
+    const { battleId, challengerDiscordId, opponentDiscordId } = JSON.parse(await readBody(req));
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`duel:accept:${battleId}:${challengerDiscordId}:${opponentDiscordId}`)
+        .setLabel("Принять")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`duel:decline:${battleId}:${challengerDiscordId}:${opponentDiscordId}`)
+        .setLabel("Отклонить")
+        .setStyle(ButtonStyle.Danger),
+    );
+    const embed = new EmbedBuilder()
+      .setTitle("Вызов на дуэль")
+      .setDescription(`<@${challengerDiscordId}> вызывает тебя на PvP-дуэль!`)
+      .setColor(0x5865f2);
+
+    const recipient = await client.users.fetch(opponentDiscordId);
+    await recipient.send({ embeds: [embed], components: [row] });
+  } catch {
+    // Best-effort — see BattleService::notifyDuelChallenge()'s docblock:
+    // DMs can be disabled, the user may be unfetchable, etc. The challenge
+    // still shows up next time they open the Activity either way.
+  }
+  res.writeHead(204).end();
 }
 
 async function handleSubscribe(socket, message) {
@@ -115,10 +165,14 @@ async function handleSubscribe(socket, message) {
   subscribersByBattle.get(message.battleId).add(socket);
 }
 
-export function startRealtimeServer(port) {
+export function startRealtimeServer(port, client) {
   const httpServer = createServer((req, res) => {
     if (req.method === "POST" && req.url === "/internal/publish") {
-      handlePublish(req, res);
+      void handlePublish(req, res);
+      return;
+    }
+    if (req.method === "POST" && req.url === "/internal/duel-challenge") {
+      void handleDuelChallenge(req, res, client);
       return;
     }
     res.writeHead(404).end();

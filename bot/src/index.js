@@ -33,4 +33,4 @@ for (const file of readdirSync(eventsDir).filter((f) => f.endsWith(".js"))) {
 
 client.login(process.env.DISCORD_BOT_TOKEN);
 
-startRealtimeServer(Number(process.env.WS_PORT ?? 3002));
+startRealtimeServer(Number(process.env.WS_PORT ?? 3002), client);
