@@ -380,7 +380,21 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       ),
     ]);
 
-    const playerPending = "wait" === next.turn;
+    // turn === "wait" (PvP) covers two different situations, and only the
+    // first one means the player's own bit is still genuinely unresolved:
+    // (1) the player just led and the real opponent hasn't responded yet —
+    //     incomingMove is set (it's the player's own pending lead, per
+    //     BattleSerializer's "symmetric" incomingMove — see opponentCircleMove
+    //     below), and the bit must keep waiting.
+    // (2) that exchange has since resolved (the opponent responded) and it's
+    //     now the opponent's turn to lead the *next* one — incomingMove is
+    //     null again, turn is still "wait" (still not this player's turn),
+    //     but the earlier bit already did its job and must flush now, not
+    //     keep waiting for a second exchange it was never part of. Without
+    //     this distinction, that bit — and its circle — got stuck forever
+    //     (or, if the round happened to end right there, silently lost when
+    //     the next round's reset wiped pendingRevealRef).
+    const playerPending = "wait" === next.turn && null !== next.incomingMove;
     // Same distinction as opponentCircleMove's own gating below: incomingMove
     // is only genuinely the opponent's still-unresolved move when it's this
     // viewer's turn to respond to it — when turn is "wait" instead (PvP),
