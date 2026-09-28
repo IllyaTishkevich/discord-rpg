@@ -5,6 +5,9 @@ export type AbilityType = "flip" | "unblockable_damage" | "reroll" | "damage_mir
 export interface AbilityChoice {
   ability: AbilityType;
   targets: number[];
+  // Flip-only: the caster's own not-yet-played bits to flip alongside (or
+  // instead of) `targets` (the opponent's).
+  ownTargets: number[];
 }
 
 // The ability catalog — admin-editable player-facing name/description, from

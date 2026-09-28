@@ -252,6 +252,41 @@ class InteractiveExchangeEngineTest extends TestCase
         self::assertSame(BitFace::Attack, $state->opponentThrows[0]->thrownFace);
     }
 
+    public function testFlipDuringLeadCanTargetTheCastersOwnUnplayedBit(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        $ownBit = new BitThrow(BitFace::Defense, BitFace::Attack, false, false, BitFace::Defense, false);
+
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Action, true), $ownBit],
+            [$this->bit(BitFace::Defense)],
+        );
+
+        ['state' => $state] = $engine->submitLead($state, [0], AbilityChoice::flip(ownTargets: [1]), AbilityChoice::flip());
+
+        self::assertSame(BitFace::Attack, $state->playerThrows[1]->thrownFace);
+        // The opponent's untargeted bit is untouched — only what was
+        // explicitly asked for flips, nothing auto-fills on top of it.
+        self::assertSame(BitFace::Defense, $state->opponentThrows[0]->thrownFace);
+    }
+
+    public function testFlipCanSplitItsTargetsBetweenOwnAndOpponentBits(): void
+    {
+        $engine = new InteractiveExchangeEngine();
+        $ownBit = new BitThrow(BitFace::Defense, BitFace::Attack, false, false, BitFace::Defense, false);
+        $opponentBit = new BitThrow(BitFace::Defense, BitFace::Attack, false, false, BitFace::Defense, false);
+
+        ['state' => $state] = $engine->startRound(
+            [$this->bit(BitFace::Action, true, 2), $ownBit],
+            [$opponentBit],
+        );
+
+        ['state' => $state] = $engine->submitLead($state, [0], AbilityChoice::flip(targets: [0], ownTargets: [1]), AbilityChoice::flip());
+
+        self::assertSame(BitFace::Attack, $state->playerThrows[1]->thrownFace);
+        self::assertSame(BitFace::Attack, $state->opponentThrows[0]->thrownFace);
+    }
+
     public function testPassLeadHandsInitiativeToTheBotWithoutConsumingBits(): void
     {
         $engine = new InteractiveExchangeEngine();

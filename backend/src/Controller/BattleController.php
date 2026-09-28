@@ -209,7 +209,7 @@ class BattleController extends AbstractApiController
      * PvE/event and PvP alike. Submits one lead-or-respond decision — the
      * server infers which from the battle's own pending state, never
      * trusting the client's idea of whose turn it is. Body:
-     * `{indices: number[], ability?: string, targets?: number[]}`; an
+     * `{indices: number[], ability?: string, targets?: number[], ownTargets?: number[]}`; an
      * empty `indices` means "pass" and is only valid when responding to an
      * incoming attack (or, PvP-only, declining to lead — see
      * BattleService::submitPvpExchangeMove()).
@@ -330,7 +330,12 @@ class BattleController extends AbstractApiController
             $targets = [];
         }
 
-        return new AbilityChoice($ability, array_map('intval', $targets));
+        $ownTargets = $body['ownTargets'] ?? [];
+        if (!\is_array($ownTargets)) {
+            $ownTargets = [];
+        }
+
+        return new AbilityChoice($ability, array_map('intval', $targets), array_map('intval', $ownTargets));
     }
 
     private function requireCharacter(): Character

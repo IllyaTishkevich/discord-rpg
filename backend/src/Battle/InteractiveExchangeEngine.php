@@ -609,12 +609,12 @@ final class InteractiveExchangeEngine
         $alreadyTriggered = $isActingSidePlayer ? $state->playerAbilityTriggered : $state->opponentAbilityTriggered;
 
         if ($alreadyTriggered || AbilityType::Flip === $choice->ability) {
-            return $this->applyFlip($state, $isActingSidePlayer, $amount, $choice->targets);
+            return $this->applyFlip($state, $isActingSidePlayer, $amount, $choice->targets, $choice->ownTargets);
         }
 
         $cost = $choice->ability->fixedCost() ?? $amount;
         if ($amount < $cost) {
-            return $this->applyFlip($state, $isActingSidePlayer, $amount, $choice->targets);
+            return $this->applyFlip($state, $isActingSidePlayer, $amount, $choice->targets, $choice->ownTargets);
         }
 
         if ($isActingSidePlayer) {
@@ -634,22 +634,58 @@ final class InteractiveExchangeEngine
 
         $leftover = $amount - $cost;
         if ($leftover > 0) {
-            $bonus += $this->applyFlip($state, $isActingSidePlayer, $leftover, $choice->targets);
+            $bonus += $this->applyFlip($state, $isActingSidePlayer, $leftover, $choice->targets, $choice->ownTargets);
         }
 
         return $bonus;
     }
 
-    private function applyFlip(ExchangeRoundState $state, bool $isActingSidePlayer, int $count, array $declaredTargets): int
+    /**
+     * Flips up to $count bits total, drawn first from the caster's own
+     * explicitly declared $declaredOwnTargets (never auto-filled — see
+     * AbilityChoice's docblock), then from $declaredTargets against the
+     * OPPONENT (auto-filled by priority if under-declared, same as always —
+     * this is also the bot's only path, since it never declares targets).
+     *
+     * @param int[] $declaredTargets
+     * @param int[] $declaredOwnTargets
+     */
+    private function applyFlip(ExchangeRoundState $state, bool $isActingSidePlayer, int $count, array $declaredTargets, array $declaredOwnTargets = []): int
     {
         if ($count <= 0) {
+            return 0;
+        }
+
+        $ownThrows = $isActingSidePlayer ? $state->playerThrows : $state->opponentThrows;
+        $ownUsed = $isActingSidePlayer ? $state->playerUsed : $state->opponentUsed;
+
+        $chosenOwn = [];
+        foreach ($declaredOwnTargets as $i) {
+            if (\count($chosenOwn) >= $count) {
+                break;
+            }
+            if (isset($ownThrows[$i]) && !($ownUsed[$i] ?? true) && !\in_array($i, $chosenOwn, true)) {
+                $chosenOwn[] = $i;
+            }
+        }
+
+        foreach ($chosenOwn as $i) {
+            if ($isActingSidePlayer) {
+                $state->playerThrows[$i] = $state->playerThrows[$i]->flipped();
+            } else {
+                $state->opponentThrows[$i] = $state->opponentThrows[$i]->flipped();
+            }
+        }
+
+        $remaining = $count - \count($chosenOwn);
+        if ($remaining <= 0) {
             return 0;
         }
 
         $targetThrows = $isActingSidePlayer ? $state->opponentThrows : $state->playerThrows;
         $targetUsed = $isActingSidePlayer ? $state->opponentUsed : $state->playerUsed;
 
-        foreach ($this->chooseBitTargets($declaredTargets, $targetThrows, $targetUsed, $count) as $i) {
+        foreach ($this->chooseBitTargets($declaredTargets, $targetThrows, $targetUsed, $remaining) as $i) {
             if ($isActingSidePlayer) {
                 $state->opponentThrows[$i] = $state->opponentThrows[$i]->flipped();
             } else {
