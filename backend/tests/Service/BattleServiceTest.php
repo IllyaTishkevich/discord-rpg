@@ -5,12 +5,14 @@ namespace App\Tests\Service;
 use App\Battle\AbilityResolver;
 use App\Battle\ExchangeResolver;
 use App\Battle\InteractiveExchangeEngine;
+use App\Entity\Ability;
 use App\Entity\Battle;
 use App\Entity\Bit;
 use App\Entity\Character;
 use App\Entity\CharacterClass;
 use App\Entity\Monster;
 use App\Entity\User;
+use App\Enum\AbilityType;
 use App\Enum\BitFace;
 use App\Repository\MonsterRepository;
 use App\Service\BattleService;
@@ -58,11 +60,16 @@ class BattleServiceTest extends TestCase
         );
     }
 
-    private function makePveBattle(Bit $playerBit, Bit $monsterBit): Battle
+    /**
+     * @param Bit|Bit[] $playerBits
+     */
+    private function makePveBattle(Bit|array $playerBits, Bit $monsterBit): Battle
     {
         $user = new User('discord-id', 'Tester');
         $class = new CharacterClass('warrior', 'Воин', 30, 10);
-        $class->addStarterBit($playerBit);
+        foreach (\is_array($playerBits) ? $playerBits : [$playerBits] as $playerBit) {
+            $class->addStarterBit($playerBit);
+        }
         $character = new Character($user, $class);
 
         $monster = new Monster('Test Monster', 1, 999);
@@ -106,9 +113,12 @@ class BattleServiceTest extends TestCase
         $service = $this->makeBattleService($entityManager);
 
         // Player has the advantage, so it's genuinely the player's own turn
-        // to lead first (nothing auto-played by throwRound()).
+        // to lead first (nothing auto-played by throwRound()). The Defense
+        // bit is what actually lets the pause below happen — a response may
+        // only ever be a defense bit (docs/COMBAT_V2_DESIGN.md §3/§4), so
+        // the Action bit alone would never qualify.
         $battle = $this->makePveBattle(
-            $this->bit(BitFace::Action, advantage: true),
+            [$this->bit(BitFace::Action, advantage: true), $this->bit(BitFace::Defense)],
             $this->bit(BitFace::Attack),
         );
 
@@ -116,7 +126,7 @@ class BattleServiceTest extends TestCase
         self::assertSame(30, $battle->getCharacter()->getHp());
 
         // 1st timeout: the player's own lead is forfeited to the bot, which
-        // leads with its Attack bit — the player still has its Action bit
+        // leads with its Attack bit — the player still has its Defense bit
         // to respond with, so this pauses rather than dealing damage yet.
         $battle->setRoundDeadlineAt(new \DateTimeImmutable('-1 second'));
         $service->syncExchangeState($battle);
@@ -137,9 +147,12 @@ class BattleServiceTest extends TestCase
         $service = $this->makeBattleService($entityManager);
 
         // Player has the advantage, so it's genuinely the player's own turn
-        // to lead first (nothing auto-played by throwRound()).
+        // to lead first (nothing auto-played by throwRound()). The Defense
+        // bit is what actually lets the pause below happen — a response may
+        // only ever be a defense bit (docs/COMBAT_V2_DESIGN.md §3/§4), so
+        // the Action bit alone would never qualify.
         $battle = $this->makePveBattle(
-            $this->bit(BitFace::Action, advantage: true),
+            [$this->bit(BitFace::Action, advantage: true), $this->bit(BitFace::Defense)],
             $this->bit(BitFace::Attack),
         );
 
@@ -150,7 +163,7 @@ class BattleServiceTest extends TestCase
         // as an empty indices array while it's a lead turn) — hands the
         // lead to the bot immediately, same as a timed-out lead, just
         // without waiting for the deadline. The bot leads with its Attack
-        // bit; the player still has its Action bit to respond with, so
+        // bit; the player still has its Defense bit to respond with, so
         // this pauses rather than dealing damage yet.
         $result = $service->submitExchangeMove($battle, $battle->getCharacter(), [], null);
 
@@ -158,5 +171,58 @@ class BattleServiceTest extends TestCase
         self::assertFalse($result->roundComplete);
         self::assertSame('respond', $result->turn);
         self::assertSame([], $result->newExchanges, 'passing the lead resolves no exchange of its own — only the bot\'s subsequent lead pauses at respond');
+    }
+
+    public function testALoneActionBitThatCantAffordAnyOwnedAbilityIsTreatedAsDeadAndEndsTheRoundAutomatically(): void
+    {
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->method('persist');
+        $entityManager->method('flush');
+        $service = $this->makeBattleService($entityManager);
+
+        // Monster's Defense bit has the advantage, so it leads first —
+        // resolves unopposed (the player has no Defense bit to respond
+        // with), handing the lead to the player. The player's only bit is
+        // then a single Action bit — but this fixture's character owns no
+        // abilities at all (makePveBattle() never grants any), so no
+        // amount of action points could ever afford one: it must be
+        // treated as dead (same as an Empty face), letting the round end
+        // right here via syncExchangeState() instead of forcing the player
+        // through a pointless ability picker.
+        $battle = $this->makePveBattle(
+            $this->bit(BitFace::Action),
+            $this->bit(BitFace::Defense, advantage: true),
+        );
+
+        $service->throwRound($battle);
+        self::assertTrue($battle->hasPendingThrow(), 'still pending right after the throw — syncExchangeState() is what finalizes it');
+
+        $service->syncExchangeState($battle);
+
+        self::assertFalse($battle->hasPendingThrow(), 'a lone action bit that can never afford any owned ability must not keep the round going');
+    }
+
+    public function testALoneActionBitStillCountsWhenTheCharacterOwnsFlip(): void
+    {
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->method('persist');
+        $entityManager->method('flush');
+        $service = $this->makeBattleService($entityManager);
+
+        // Same shape as the "dead" test above, except this character
+        // actually owns Flip — always triggerable regardless of amount
+        // (even with 0 targets), so the lone action bit must NOT be
+        // treated as dead: the round keeps going and it becomes the
+        // player's genuine turn to lead with it.
+        $battle = $this->makePveBattle(
+            $this->bit(BitFace::Action),
+            $this->bit(BitFace::Defense, advantage: true),
+        );
+        $battle->getCharacter()->addAbility(new Ability(AbilityType::Flip));
+
+        $service->throwRound($battle);
+        $service->syncExchangeState($battle);
+
+        self::assertTrue($battle->hasPendingThrow(), 'a lone action bit must still count when the character owns an ability that can use it');
     }
 }

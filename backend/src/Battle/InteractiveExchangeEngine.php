@@ -52,9 +52,14 @@ final class InteractiveExchangeEngine
      *               decision point — only possible in the degenerate case where the
      *               player rolled zero bits (see currentTurn())
      */
-    public function startRound(array $playerThrows, array $opponentThrows, AbilityChoice $botChoice = new AbilityChoice(AbilityType::Flip)): array
-    {
-        $state = $this->buildInitialState($playerThrows, $opponentThrows);
+    public function startRound(
+        array $playerThrows,
+        array $opponentThrows,
+        AbilityChoice $botChoice = new AbilityChoice(AbilityType::Flip),
+        int $playerMinActionAmount = 0,
+        int $opponentMinActionAmount = 0,
+    ): array {
+        $state = $this->buildInitialState($playerThrows, $opponentThrows, $playerMinActionAmount, $opponentMinActionAmount);
 
         // If the bot leads first, its move (and any immediately-following
         // bot-solo exchanges, in the degenerate all-bot-bits case) must be
@@ -80,17 +85,25 @@ final class InteractiveExchangeEngine
      * @param BitThrow[] $playerThrows
      * @param BitThrow[] $opponentThrows
      */
-    public function startPvpRound(array $playerThrows, array $opponentThrows): ExchangeRoundState
-    {
-        return $this->buildInitialState($playerThrows, $opponentThrows);
+    public function startPvpRound(
+        array $playerThrows,
+        array $opponentThrows,
+        int $playerMinActionAmount = 0,
+        int $opponentMinActionAmount = 0,
+    ): ExchangeRoundState {
+        return $this->buildInitialState($playerThrows, $opponentThrows, $playerMinActionAmount, $opponentMinActionAmount);
     }
 
     /**
      * @param BitThrow[] $playerThrows
      * @param BitThrow[] $opponentThrows
      */
-    private function buildInitialState(array $playerThrows, array $opponentThrows): ExchangeRoundState
-    {
+    private function buildInitialState(
+        array $playerThrows,
+        array $opponentThrows,
+        int $playerMinActionAmount = 0,
+        int $opponentMinActionAmount = 0,
+    ): ExchangeRoundState {
         $playerThrows = array_values($playerThrows);
         $opponentThrows = array_values($opponentThrows);
 
@@ -116,6 +129,8 @@ final class InteractiveExchangeEngine
             false,
             false,
             [],
+            $playerMinActionAmount,
+            $opponentMinActionAmount,
         );
     }
 
@@ -398,8 +413,14 @@ final class InteractiveExchangeEngine
             ? $this->applyActionAbility($state, false, $leaderMove['amount'], $botChoice)
             : 0;
 
-        if ($state->remainingCount(true) > 0) {
-            // Player can respond — pause here and let the caller ask them.
+        if ($state->gatherByFace(true, BitFace::Defense)['count'] > 0) {
+            // Player has a genuine response available (a response may only
+            // ever be a defense bit, never attack/action — see
+            // validateAndConsumeMove()) — pause here and let the caller ask
+            // them. Deliberately not remainingCount(true) > 0: a leftover
+            // bit that could never actually be used to respond (an action
+            // bit, always — an attack bit, since §3 forbids responding with
+            // one) must not force a pointless pause just because it exists.
             $state->pendingLeaderMove = [
                 'face' => $leaderMove['face']->value,
                 'count' => $leaderMove['amount'],

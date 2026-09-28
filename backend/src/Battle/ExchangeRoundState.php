@@ -19,8 +19,10 @@ final class ExchangeRoundState
      * @param BitThrow[]                                                                                                                                                    $opponentThrows
      * @param bool[]                                                                                                                                                       $playerUsed
      * @param bool[]                                                                                                                                                       $opponentUsed
-     * @param array{face: string, count: int}|null                                                                                                                        $pendingLeaderMove set once the leader has moved and we're waiting on the responder
-     * @param array{leaderIsPlayer: bool, leaderFace: string, leaderCount: int, responderFace: ?string, responderCount: int, damageToPlayer: int, damageToOpponent: int}[] $exchanges         resolved so far this round
+     * @param array{face: string, count: int}|null                                                                                                                        $pendingLeaderMove       set once the leader has moved and we're waiting on the responder
+     * @param array{leaderIsPlayer: bool, leaderFace: string, leaderCount: int, responderFace: ?string, responderCount: int, damageToPlayer: int, damageToOpponent: int}[] $exchanges               resolved so far this round
+     * @param int                                                                                                                                                           $playerMinActionAmount   the smallest action-point amount that could trigger any ability the player actually owns (see BattleService::minimumViableActionAmount()) — used by remainingCount() to treat a side's leftover action bits as dead (same as an Empty face) once they can never add up to anything usable
+     * @param int                                                                                                                                                           $opponentMinActionAmount same, for the opponent side — always 0 (no restriction) for a PvE/event Monster, which has no abilities of its own
      */
     public function __construct(
         public array $playerThrows,
@@ -34,6 +36,8 @@ final class ExchangeRoundState
         public bool $playerAbilityTriggered,
         public bool $opponentAbilityTriggered,
         public array $exchanges,
+        public int $playerMinActionAmount = 0,
+        public int $opponentMinActionAmount = 0,
     ) {
     }
 
@@ -51,6 +55,8 @@ final class ExchangeRoundState
             'playerAbilityTriggered' => $this->playerAbilityTriggered,
             'opponentAbilityTriggered' => $this->opponentAbilityTriggered,
             'exchanges' => $this->exchanges,
+            'playerMinActionAmount' => $this->playerMinActionAmount,
+            'opponentMinActionAmount' => $this->opponentMinActionAmount,
         ];
     }
 
@@ -68,6 +74,11 @@ final class ExchangeRoundState
             $data['playerAbilityTriggered'],
             $data['opponentAbilityTriggered'],
             $data['exchanges'],
+            // Absent for a round persisted before this field existed (an
+            // in-flight battle at deploy time) — 0 means "no restriction",
+            // i.e. the old behavior of never treating action bits as dead.
+            $data['playerMinActionAmount'] ?? 0,
+            $data['opponentMinActionAmount'] ?? 0,
         );
     }
 
@@ -78,17 +89,44 @@ final class ExchangeRoundState
      * Flip later reveals its other, real face, the next call here picks that
      * up automatically (this re-checks thrownFace fresh every time, nothing
      * to invalidate).
+     *
+     * Also doesn't count unused Action-showing bits once this side's *total*
+     * remaining action amount can never reach playerMinActionAmount/
+     * opponentMinActionAmount — i.e. leading with all of them together still
+     * couldn't afford even the cheapest ability this side's character
+     * actually owns, so they're exactly as dead as an Empty face (a real
+     * reported case: a single leftover action bit when every owned ability
+     * costs more than 1). A zero threshold (the PvE/event Monster side,
+     * which has no abilities at all, or a round persisted before this
+     * existed) never triggers this — see the constructor's docblock.
      */
     public function remainingCount(bool $isPlayerSide): int
     {
         $throws = $isPlayerSide ? $this->playerThrows : $this->opponentThrows;
         $used = $isPlayerSide ? $this->playerUsed : $this->opponentUsed;
+        $minActionAmount = $isPlayerSide ? $this->playerMinActionAmount : $this->opponentMinActionAmount;
+
+        $actionAmount = 0;
+        foreach ($used as $i => $isUsed) {
+            if (!$isUsed && BitFace::Action === $throws[$i]->thrownFace) {
+                $actionAmount += $throws[$i]->thrownMultiplier;
+            }
+        }
+        $actionBitsAreDead = $actionAmount > 0 && $actionAmount < $minActionAmount;
 
         $count = 0;
         foreach ($used as $i => $isUsed) {
-            if (!$isUsed && BitFace::Empty !== $throws[$i]->thrownFace) {
-                ++$count;
+            if ($isUsed) {
+                continue;
             }
+            $face = $throws[$i]->thrownFace;
+            if (BitFace::Empty === $face) {
+                continue;
+            }
+            if (BitFace::Action === $face && $actionBitsAreDead) {
+                continue;
+            }
+            ++$count;
         }
 
         return $count;

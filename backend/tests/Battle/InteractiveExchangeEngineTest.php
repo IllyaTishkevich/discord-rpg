@@ -58,8 +58,12 @@ class InteractiveExchangeEngineTest extends TestCase
     public function testPassingOnRespondTakesFullDamage(): void
     {
         $engine = new InteractiveExchangeEngine();
+        // A genuine Defense bit — a response may only ever be defense
+        // (docs/COMBAT_V2_DESIGN.md §3/§4), so this is what actually makes
+        // the pause below happen; declining to use it anyway (the explicit
+        // empty-indices pass) is exactly what this test exercises.
         ['state' => $state] = $engine->startRound(
-            [$this->bit(BitFace::Action)],
+            [$this->bit(BitFace::Defense)],
             [$this->bit(BitFace::Attack, true)],
         );
 

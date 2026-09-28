@@ -18,6 +18,7 @@ use App\Entity\Character;
 use App\Entity\Event;
 use App\Entity\Item;
 use App\Entity\Monster;
+use App\Enum\AbilityType;
 use App\Enum\BattleMode;
 use App\Enum\BattleStatus;
 use App\Enum\BitFace;
@@ -285,11 +286,14 @@ class BattleService
             array_map(static fn (BitThrow $t) => $t->toArray(), $opponentThrows),
         );
 
+        $playerMinActionAmount = $this->minimumViableActionAmount($battle->getCharacter());
+
         if ($battle->isPvp()) {
             // Real players on both sides — nobody auto-plays (see
             // InteractiveExchangeEngine::startPvpRound()); start the
             // move-deadline clock for whoever leads first.
-            $state = $this->interactiveEngine->startPvpRound($playerThrows, $opponentThrows);
+            $opponentMinActionAmount = $this->minimumViableActionAmount($battle->getOpponentCharacter());
+            $state = $this->interactiveEngine->startPvpRound($playerThrows, $opponentThrows, $playerMinActionAmount, $opponentMinActionAmount);
             $battle->setPendingExchangeState($state->toArray());
             $this->refreshMoveDeadline($battle);
         } else {
@@ -297,7 +301,9 @@ class BattleService
             // startRound() may already auto-play the bot's opening move (or,
             // in the near-impossible case of a 0-bit character, resolve the
             // entire round instantly) — apply any such exchanges now.
-            ['state' => $roundState, 'exchanges' => $exchanges] = $this->interactiveEngine->startRound($playerThrows, $opponentThrows, $this->pickBotAbility($battle));
+            // opponentMinActionAmount stays 0 (unrestricted) — a PvE/event
+            // Monster has no abilities of its own to be short on points for.
+            ['state' => $roundState, 'exchanges' => $exchanges] = $this->interactiveEngine->startRound($playerThrows, $opponentThrows, $this->pickBotAbility($battle), $playerMinActionAmount);
             foreach ($exchanges as $exchange) {
                 $this->applyExchangeDamage($battle, $exchange);
             }
@@ -798,6 +804,34 @@ class BattleService
                 $choice->ability->value,
             ));
         }
+    }
+
+    /**
+     * The smallest action-point amount that could trigger at least one
+     * ability this character actually owns — fed into
+     * ExchangeRoundState::remainingCount() (via startRound()/startPvpRound())
+     * so a side's leftover action bits stop counting as "remaining" once
+     * they can never add up to this, exactly like an Empty face. Flip is
+     * always triggerable regardless of amount (even with 0 targets), so
+     * owning it means action bits are never dead; UnblockableDamage/Reroll
+     * need at least 1 point; the three fixed-cost abilities need 2 (see
+     * AbilityType::fixedCost()). Owning none of the six means every action
+     * bit is permanently dead — an unreachably high threshold, rather than
+     * a special-cased sentinel.
+     */
+    private function minimumViableActionAmount(Character $character): int
+    {
+        if ($character->hasAbilityType(AbilityType::Flip)) {
+            return 0;
+        }
+        if ($character->hasAbilityType(AbilityType::UnblockableDamage) || $character->hasAbilityType(AbilityType::Reroll)) {
+            return 1;
+        }
+        if ($character->hasAbilityType(AbilityType::DamageMirror) || $character->hasAbilityType(AbilityType::Destroy) || $character->hasAbilityType(AbilityType::Double)) {
+            return 2;
+        }
+
+        return \PHP_INT_MAX;
     }
 
     private function isBattleKnockedOut(Battle $battle): bool
