@@ -975,6 +975,15 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
                         className={`arena__ability${isSelected ? " arena__ability--selected" : ""}`}
                         disabled={!affordable}
                         onClick={() => {
+                          // Re-clicking the already-selected ability (e.g. to
+                          // "confirm" the pick before moving on to targets —
+                          // a natural instinct, since this row is the only
+                          // visible "choose the ability" affordance) used to
+                          // silently wipe any targets already chosen, since
+                          // this ran unconditionally. Only actually switching
+                          // ability should reset targets picked for a
+                          // different one.
+                          if (option.type === selectedAbility) return;
                           setSelectedAbility(option.type);
                           setFlipTargets([]);
                         }}
