@@ -2,6 +2,7 @@
 
 namespace App\Repository;
 
+use App\Entity\Character;
 use App\Entity\Tournament;
 use App\Enum\TournamentStatus;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
@@ -29,5 +30,13 @@ class TournamentRepository extends ServiceEntityRepository
     public function findMostRecent(): ?Tournament
     {
         return $this->findOneBy([], ['id' => 'DESC']);
+    }
+
+    /**
+     * @return Tournament[]
+     */
+    public function findAllByChampionCharacter(Character $character): array
+    {
+        return $this->findBy(['championCharacter' => $character]);
     }
 }

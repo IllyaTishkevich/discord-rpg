@@ -22,4 +22,12 @@ class TournamentEntryRepository extends ServiceEntityRepository
     {
         return $this->findOneBy(['tournament' => $tournament, 'character' => $character]);
     }
+
+    /**
+     * @return TournamentEntry[]
+     */
+    public function findByCharacter(Character $character): array
+    {
+        return $this->findBy(['character' => $character]);
+    }
 }

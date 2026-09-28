@@ -12,6 +12,7 @@ use App\Repository\UserRepository;
 use App\Repository\WeeklyQuestRepository;
 use App\Serializer\BattleSerializer;
 use App\Service\BattleService;
+use App\Service\CharacterService;
 use App\Service\EventService;
 use App\Service\QuestService;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -60,6 +61,29 @@ class BotController extends AbstractBotController
             'xp' => $character->getXp(),
             'coins' => $character->getCoins(),
         ]);
+    }
+
+    /**
+     * /wipe: deletes this Discord user's character entirely (battles,
+     * tournament records, equipment, quest progress — see
+     * CharacterService::wipeCharacter()'s docblock), leaving the user free
+     * to create a fresh one next time they open the Activity.
+     */
+    #[Route('/characters/{discordId}', name: 'bot_character_wipe', methods: ['DELETE'])]
+    public function wipe(string $discordId, Request $request, CharacterService $characterService): JsonResponse
+    {
+        if ($forbidden = $this->checkSecret($request)) {
+            return $forbidden;
+        }
+
+        $character = $this->userRepository->findOneByDiscordId($discordId)?->getCharacter();
+        if (null === $character) {
+            return $this->json(['error' => 'No character for this user yet.'], 404);
+        }
+
+        $characterService->wipeCharacter($character);
+
+        return $this->json(null, 204);
     }
 
     #[Route('/quests/{discordId}', name: 'bot_quest_current', methods: ['GET'])]

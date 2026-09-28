@@ -38,4 +38,21 @@ class BattleRepository extends ServiceEntityRepository
             ->getQuery()
             ->getOneOrNullResult();
     }
+
+    /**
+     * Every battle this character was ever part of, on either side —
+     * CharacterService::wipeCharacter() removes each one via the entity
+     * manager (not a bulk DQL delete) so Battle::$rounds' orphanRemoval
+     * cascades to BattleRound.
+     *
+     * @return Battle[]
+     */
+    public function findAllFor(Character $character): array
+    {
+        return $this->createQueryBuilder('b')
+            ->where('b.character = :character OR b.opponentCharacter = :character')
+            ->setParameter('character', $character)
+            ->getQuery()
+            ->getResult();
+    }
 }

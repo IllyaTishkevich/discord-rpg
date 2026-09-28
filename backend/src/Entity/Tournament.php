@@ -75,6 +75,16 @@ class Tournament
         return $this;
     }
 
+    /**
+     * Used only by CharacterService::wipeCharacter() — the championCharacter
+     * itself is going away, but the tournament it won stays (championCharacter
+     * is nullable precisely for this).
+     */
+    public function forgetChampion(): void
+    {
+        $this->championCharacter = null;
+    }
+
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;

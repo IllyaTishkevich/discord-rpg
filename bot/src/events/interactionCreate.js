@@ -1,4 +1,5 @@
 import { handleDuelButton } from "../interactions/duelButtons.js";
+import { handleWipeButton } from "../interactions/wipeButtons.js";
 
 export default {
   name: "interactionCreate",
@@ -14,6 +15,11 @@ export default {
 
       if (interaction.isButton() && interaction.customId.startsWith("duel:")) {
         await handleDuelButton(interaction);
+        return;
+      }
+
+      if (interaction.isButton() && interaction.customId.startsWith("wipe:")) {
+        await handleWipeButton(interaction);
       }
     } catch (error) {
       console.error("Error handling interaction:", error);

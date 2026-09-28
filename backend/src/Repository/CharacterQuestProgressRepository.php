@@ -22,4 +22,12 @@ class CharacterQuestProgressRepository extends ServiceEntityRepository
     {
         return $this->findOneBy(['character' => $character, 'quest' => $quest]);
     }
+
+    /**
+     * @return CharacterQuestProgress[]
+     */
+    public function findByCharacter(Character $character): array
+    {
+        return $this->findBy(['character' => $character]);
+    }
 }
