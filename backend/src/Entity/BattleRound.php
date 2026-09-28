@@ -119,6 +119,23 @@ class BattleRound
         return $this->opponentFaces;
     }
 
+    /**
+     * Plain-string view of playerFaces/opponentFaces for the admin CRUD
+     * list (BattleRoundCrudController) — EasyAdmin's TextField rejects the
+     * raw array outright (its own type check runs before any formatValue()
+     * callback gets a chance to stringify it), so it needs an actual
+     * string-returning accessor to point at instead.
+     */
+    public function getPlayerFacesLabel(): string
+    {
+        return implode(', ', $this->playerFaces);
+    }
+
+    public function getOpponentFacesLabel(): string
+    {
+        return implode(', ', $this->opponentFaces);
+    }
+
     public function getDamageToOpponent(): int
     {
         return $this->damageToOpponent;

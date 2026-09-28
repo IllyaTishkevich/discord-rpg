@@ -30,8 +30,8 @@ class BattleRoundCrudController extends AbstractCrudController
         yield IdField::new('id');
         yield AssociationField::new('battle', 'Бой');
         yield IntegerField::new('roundNumber', '№ раунда');
-        yield TextField::new('playerFaces', 'Грани игрока')->formatValue(static fn ($v) => implode(', ', $v));
-        yield TextField::new('opponentFaces', 'Грани противника')->formatValue(static fn ($v) => implode(', ', $v));
+        yield TextField::new('playerFacesLabel', 'Грани игрока');
+        yield TextField::new('opponentFacesLabel', 'Грани противника');
         yield IntegerField::new('damageToOpponent', 'Урон противнику');
         yield IntegerField::new('damageToPlayer', 'Урон игроку');
         yield DateTimeField::new('createdAt', 'Время');
