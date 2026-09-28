@@ -1,4 +1,5 @@
-import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
+import { buildDuelChallengeMessage } from "../interactions/duelChallengeMessage.js";
 
 export default {
   data: new SlashCommandBuilder()
@@ -39,22 +40,18 @@ export default {
 
     const { id: battleId } = await response.json();
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`duel:accept:${battleId}:${interaction.user.id}:${opponent.id}`)
-        .setLabel("Принять")
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(`duel:decline:${battleId}:${interaction.user.id}:${opponent.id}`)
-        .setLabel("Отклонить")
-        .setStyle(ButtonStyle.Danger),
-    );
+    // Only the two duelists ever see the challenge itself: the challenger
+    // gets a private confirmation (no Accept/Decline — it's not their move
+    // to make), the opponent gets the real thing by DM. Falls back to a
+    // normal channel message only if the DM fails (DMs disabled, etc.) —
+    // better a public post than a challenge nobody ever sees.
+    await interaction.reply({ content: `Вызов отправлен ${opponent} в личные сообщения.`, ephemeral: true });
 
-    const embed = new EmbedBuilder()
-      .setTitle("Вызов на дуэль")
-      .setDescription(`${interaction.user} вызывает ${opponent} на PvP-дуэль!`)
-      .setColor(0x5865f2);
-
-    await interaction.reply({ content: `${opponent}`, embeds: [embed], components: [row] });
+    const message = buildDuelChallengeMessage(battleId, interaction.user.id, opponent.id);
+    try {
+      await opponent.send(message);
+    } catch {
+      await interaction.followUp({ content: `${opponent} — не получилось отправить в личные сообщения, вызов ниже:`, ...message });
+    }
   },
 };

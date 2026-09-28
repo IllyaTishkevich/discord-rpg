@@ -2,9 +2,9 @@ import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import jwt from "jsonwebtoken";
 import { WebSocketServer } from "ws";
+import { buildDuelChallengeMessage } from "../interactions/duelChallengeMessage.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -112,23 +112,8 @@ async function handleDuelChallenge(req, res, client) {
   try {
     const { battleId, challengerDiscordId, opponentDiscordId } = JSON.parse(await readBody(req));
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`duel:accept:${battleId}:${challengerDiscordId}:${opponentDiscordId}`)
-        .setLabel("Принять")
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(`duel:decline:${battleId}:${challengerDiscordId}:${opponentDiscordId}`)
-        .setLabel("Отклонить")
-        .setStyle(ButtonStyle.Danger),
-    );
-    const embed = new EmbedBuilder()
-      .setTitle("Вызов на дуэль")
-      .setDescription(`<@${challengerDiscordId}> вызывает тебя на PvP-дуэль!`)
-      .setColor(0x5865f2);
-
     const recipient = await client.users.fetch(opponentDiscordId);
-    await recipient.send({ embeds: [embed], components: [row] });
+    await recipient.send(buildDuelChallengeMessage(battleId, challengerDiscordId, opponentDiscordId));
   } catch {
     // Best-effort — see BattleService::notifyDuelChallenge()'s docblock:
     // DMs can be disabled, the user may be unfetchable, etc. The challenge
