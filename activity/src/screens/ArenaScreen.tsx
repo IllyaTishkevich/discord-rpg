@@ -13,10 +13,10 @@ import "./ArenaScreen.css";
 
 // Fallback-only poll interval while it's the other real duelist's turn
 // (PvE/event never reaches this — the bot always resolves synchronously in
-// the same request as the player's own move). Real-time push (Mercure, see
-// ../api/realtime.ts) is the primary way an opponent's move reaches this
-// client now — this just covers a dropped connection, so it can afford to
-// be slow.
+// the same request as the player's own move). Real-time push (WebSocket,
+// see ../api/realtime.ts) is the primary way an opponent's move reaches
+// this client now — this just covers a dropped connection, so it can
+// afford to be slow.
 const PVP_POLL_FALLBACK_INTERVAL_MS = 10000;
 
 type Phase = "loading" | "playing" | "resolved";

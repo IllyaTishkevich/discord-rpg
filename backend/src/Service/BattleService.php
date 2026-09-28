@@ -30,8 +30,8 @@ use App\Exception\NotBattleParticipantException;
 use App\Repository\MonsterRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
-use Symfony\Component\Mercure\HubInterface;
-use Symfony\Component\Mercure\Update;
+use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpExceptionInterface;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Application service orchestrating battles: PvE/event fights against a bot
@@ -106,8 +106,10 @@ class BattleService
         // Per-move deadline for the interactive exchange flow, PvE/event and
         // PvP alike — see refreshMoveDeadline()/applyMoveTimeoutIfExpired().
         #[Autowire(env: 'int:ROUND_TIMEOUT_SECONDS')] private readonly int $roundTimeoutSeconds,
+        private readonly HttpClientInterface $httpClient,
         // Real-time PvP duel sync — see publishPvpUpdate()'s docblock.
-        #[Autowire(service: 'mercure.hub.default')] private readonly HubInterface $mercureHub,
+        #[Autowire(env: 'WS_RELAY_URL')] private readonly string $wsRelayUrl,
+        #[Autowire(env: 'BOT_API_SECRET')] private readonly string $botApiSecret,
     ) {
     }
 
@@ -115,22 +117,32 @@ class BattleService
      * Tells both duelists' clients to re-fetch this battle right now, instead
      * of waiting for their next poll tick (activity/src/api/realtime.ts) —
      * called after every PvP state change (throwRound(), a committed lead/
-     * respond, a timeout auto-pass, a round finishing). The update itself
-     * carries no battle data, just enough to know which battle to re-fetch —
-     * GET /battles/{id} (already participant-gated) remains the only source
-     * of truth for the actual state, so this can't leak anything by being
-     * observed. private: true means only a subscriber holding a JWT scoped
-     * to this exact "battle/{id}" topic (minted for the two participants
-     * only — see BattleController::attachMercureSubscriberCookie()) ever
-     * receives it, even though the topic name itself is guessable.
+     * respond, a timeout auto-pass, a round finishing). Relayed through the
+     * bot process's own tiny WebSocket server (bot/src/realtime/server.js),
+     * which is the only thing here that holds long-lived connections — a
+     * plain PHP-FPM request/response can't. The relay carries no battle
+     * data, just enough to know which battle to re-fetch — GET /battles/{id}
+     * (already participant-gated) remains the only source of truth for the
+     * actual state. Best-effort: if the bot process is unreachable, the
+     * Activity's own poll fallback (activity/src/api/realtime.ts) still
+     * picks up the move within a few seconds, so a relay hiccup must never
+     * fail the request that triggered it.
      */
     private function publishPvpUpdate(Battle $battle): void
     {
-        $this->mercureHub->publish(new Update(
-            topics: 'battle/'.$battle->getId(),
-            data: json_encode(['battleId' => $battle->getId()], \JSON_THROW_ON_ERROR),
-            private: true,
-        ));
+        try {
+            $response = $this->httpClient->request('POST', $this->wsRelayUrl, [
+                'json' => ['battleId' => $battle->getId()],
+                'headers' => ['X-Bot-Secret' => $this->botApiSecret],
+                'timeout' => 2,
+            ]);
+            // Symfony's HttpClient only actually performs the request once
+            // something reads the response — without this, the POST above
+            // would silently never be sent.
+            $response->getStatusCode();
+        } catch (HttpExceptionInterface) {
+            // Swallowed on purpose — see docblock above.
+        }
     }
 
     public function startPveBattle(Character $character): Battle

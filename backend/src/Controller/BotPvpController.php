@@ -81,4 +81,23 @@ class BotPvpController extends AbstractBotController
 
         return $this->json(['id' => $battle->getId()]);
     }
+
+    /**
+     * Who's allowed to subscribe to this battle's real-time updates — the
+     * bot's own WebSocket server (bot/src/realtime/server.js) checks a
+     * connecting client's JWT-derived Discord ID against this before
+     * registering it for push, since it has no direct DB access of its own.
+     */
+    #[Route('/{id}/participants', name: 'bot_battle_pvp_participants', methods: ['GET'])]
+    public function participants(Battle $battle, Request $request): JsonResponse
+    {
+        if ($forbidden = $this->checkSecret($request)) {
+            return $forbidden;
+        }
+
+        return $this->json([
+            'characterDiscordId' => $battle->getCharacter()->getUser()->getDiscordId(),
+            'opponentDiscordId' => $battle->getOpponentCharacter()?->getUser()->getDiscordId(),
+        ]);
+    }
 }

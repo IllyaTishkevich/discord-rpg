@@ -19,7 +19,6 @@ use App\Serializer\BattleSerializer;
 use App\Service\BattleService;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Mercure\Authorization;
 use Symfony\Component\Routing\Attribute\Route;
 
 #[Route('/api/battles')]
@@ -27,24 +26,7 @@ class BattleController extends AbstractApiController
 {
     public function __construct(
         private readonly BattleSerializer $serializer,
-        private readonly Authorization $mercureAuthorization,
     ) {
-    }
-
-    /**
-     * Mints a subscriber JWT scoped to exactly this battle's own topic (see
-     * BattleService::publishPvpUpdate()) and queues it as the "mercureAuthorization"
-     * cookie the Mercure hub expects (Symfony\Component\Mercure\EventSubscriber\SetCookieSubscriber
-     * attaches it to whichever response this request ends up returning), so
-     * the Activity's own EventSource subscription (activity/src/api/realtime.ts)
-     * — which reaches the hub same-origin, via nginx's /.well-known/mercure
-     * proxy — picks it up automatically. Called from every PvP response so
-     * it's always fresh; cheap to redo even though the token itself is
-     * long-lived.
-     */
-    private function attachMercureSubscriberCookie(Battle $battle, Request $request): void
-    {
-        $this->mercureAuthorization->setCookie($request, subscribe: 'battle/'.$battle->getId());
     }
 
     #[Route('/pve', name: 'battle_start_pve', methods: ['POST'])]
@@ -79,7 +61,7 @@ class BattleController extends AbstractApiController
     }
 
     #[Route('/{id}', name: 'battle_show', methods: ['GET'])]
-    public function show(Battle $battle, BattleService $battleService, Request $request): JsonResponse
+    public function show(Battle $battle, BattleService $battleService): JsonResponse
     {
         $viewerIsOpponentSide = $this->requireParticipantSide($battle);
 
@@ -92,15 +74,12 @@ class BattleController extends AbstractApiController
         $battleService->syncExchangeState($battle);
 
         if ($battle->isPvp()) {
-            $response = $this->json([
+            return $this->json([
                 ...$this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
                 'exchange' => $battle->hasPendingThrow()
                     ? $this->serializer->throwResultForViewer($battleService->currentThrowResult($battle), $viewerIsOpponentSide)
                     : null,
             ]);
-            $this->attachMercureSubscriberCookie($battle, $request);
-
-            return $response;
         }
 
         return $this->json([
@@ -121,7 +100,7 @@ class BattleController extends AbstractApiController
      * in_progress and the first round is thrown automatically.
      */
     #[Route('/{id}/join', name: 'battle_join_pvp', methods: ['POST'])]
-    public function join(Battle $battle, BattleService $battleService, Request $request): JsonResponse
+    public function join(Battle $battle, BattleService $battleService): JsonResponse
     {
         $viewerIsOpponentSide = $this->requireParticipantSide($battle);
         if (!$battle->isPvp()) {
@@ -137,12 +116,7 @@ class BattleController extends AbstractApiController
             return $this->json(['error' => $e->getMessage()], 409);
         }
 
-        $response = $this->json($this->serializer->battleForViewer($battle, $viewerIsOpponentSide));
-        // Set as early in the duel lifecycle as possible — by the time the
-        // first exchange happens, both sides should already be subscribed.
-        $this->attachMercureSubscriberCookie($battle, $request);
-
-        return $response;
+        return $this->json($this->serializer->battleForViewer($battle, $viewerIsOpponentSide));
     }
 
     #[Route('/{id}/decline', name: 'battle_decline_pvp', methods: ['POST'])]
@@ -163,7 +137,7 @@ class BattleController extends AbstractApiController
     }
 
     #[Route('/{id}/throw', name: 'battle_throw_round', methods: ['POST'])]
-    public function throwRound(Battle $battle, BattleService $battleService, Request $request): JsonResponse
+    public function throwRound(Battle $battle, BattleService $battleService): JsonResponse
     {
         $viewerIsOpponentSide = $this->requireParticipantSide($battle);
 
@@ -174,7 +148,7 @@ class BattleController extends AbstractApiController
         }
 
         if ($battle->isPvp()) {
-            $response = $this->json([
+            return $this->json([
                 ...$this->serializer->throwResultForViewer($result, $viewerIsOpponentSide),
                 // Carries the freshly-set roundDeadlineAt — throwRound() is
                 // the only place that sets it besides submitExchangeMove()
@@ -182,9 +156,6 @@ class BattleController extends AbstractApiController
                 // response otherwise has nowhere else to put it.
                 'battle' => $this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
             ]);
-            $this->attachMercureSubscriberCookie($battle, $request);
-
-            return $response;
         }
 
         return $this->json([
@@ -267,23 +238,17 @@ class BattleController extends AbstractApiController
         }
 
         if ($result->roundComplete) {
-            $response = $this->json([
+            return $this->json([
                 ...$this->serializer->exchangeMoveResultForViewer($result, $viewerIsOpponentSide),
                 'round' => $this->serializer->roundForViewer($result->round, $viewerIsOpponentSide),
                 'battle' => $this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
             ]);
-            $this->attachMercureSubscriberCookie($battle, $request);
-
-            return $response;
         }
 
-        $response = $this->json([
+        return $this->json([
             ...$this->serializer->exchangeMoveResultForViewer($result, $viewerIsOpponentSide),
             'battle' => $this->serializer->battleForViewer($battle, $viewerIsOpponentSide),
         ]);
-        $this->attachMercureSubscriberCookie($battle, $request);
-
-        return $response;
     }
 
     /**

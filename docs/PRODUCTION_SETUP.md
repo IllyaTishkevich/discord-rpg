@@ -156,9 +156,7 @@ ACTIVITY_PREVIEW_URL=https://discord-rpg.example.com
 
 # Real-time синхронизация PvP-дуэлей (см. B.14) — без этого блока дуэли
 # всё ещё работают, просто на медленном фоновом поллинге.
-MERCURE_URL=http://127.0.0.1:3000/.well-known/mercure
-MERCURE_PUBLIC_URL=https://discord-rpg.example.com/.well-known/mercure
-MERCURE_JWT_SECRET=<то же значение, что в discord-rpg-mercure.service, см. B.14.3>
+WS_RELAY_URL=http://127.0.0.1:3002/internal/publish
 ```
 
 `bot/.env`:
@@ -168,6 +166,9 @@ DISCORD_BOT_TOKEN=<из A.3>
 DISCORD_CLIENT_ID=<из A.1>
 BACKEND_API_URL=https://discord-rpg.example.com/api
 BOT_API_SECRET=<то же значение, что в backend/.env.local>
+# Real-time синхронизация PvP-дуэлей (см. B.14) — порт собственного
+# WS-сервера бота (bot/src/realtime/server.js).
+WS_PORT=3002
 ```
 
 `activity/.env.local`:
@@ -177,8 +178,8 @@ VITE_DISCORD_CLIENT_ID=<из A.1>
 VITE_BACKEND_API_URL=https://discord-rpg.example.com/api
 # Используется только инструментом /admin → "Превью Activity" вне настоящего
 # Discord — встроенный в реальный клиент Activity сам вычисляет путь через
-# /.proxy/.well-known/mercure, см. B.14.5.
-VITE_MERCURE_URL=https://discord-rpg.example.com/.well-known/mercure
+# /.proxy/ws, см. B.14.
+VITE_WS_URL=wss://discord-rpg.example.com/ws
 ```
 
 > `BOT_API_SECRET` должен **совпадать** в `backend` и `bot` — это общий секрет для service-to-service запросов (заголовок `X-Bot-Secret`, проверяется в `backend/src/Controller/AbstractBotController.php`).
@@ -286,24 +287,16 @@ server {
         try_files $uri =404;
     }
 
-    # Real-time PvP-синхронизация (Mercure) — см. B.14. SSE требует
-    # небуферизированное, долгоживущее соединение, в отличие от всего
-    # остального в этом файле.
-    location /.well-known/mercure {
-        proxy_pass http://127.0.0.1:3000;
+    # Real-time PvP-синхронизация — см. B.14. Проксирует на бота (его же
+    # процесс держит и Discord-соединение, и этот WS-сервер), нужен апгрейд
+    # соединения (Upgrade/Connection), не буферизированный и долгоживущий,
+    # в отличие от всего остального в этом файле.
+    location /ws {
+        proxy_pass http://127.0.0.1:3002;
         proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        # NOT $host — Caddy (the hub) routes by Host header against its own
-        # Caddyfile site address (127.0.0.1:3000, see B.14.2); forwarding the
-        # public domain here makes Caddy fail to match any site and silently
-        # answer 200 with an empty body instead of proxying to the hub at
-        # all (found the hard way — this exact bug shipped and had to be
-        # diagnosed live against a real deploy).
-        proxy_set_header Host 127.0.0.1:3000;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_buffering off;
-        proxy_cache off;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
         proxy_read_timeout 24h;
     }
 
@@ -422,127 +415,30 @@ sudo -u discord-rpg npm install --omit=dev
 sudo systemctl restart discord-rpg-bot
 ```
 
-> `deploy.sh` **не** перезапускает `npm run deploy-commands` — если менялись слэш-команды бота, это отдельный разовый шаг (см. A.5). Он также **не** трогает Mercure hub (B.14) — тот перезапускать нужно только вручную, если поменялся сам `Caddyfile` или `MERCURE_JWT_SECRET`, а не при обычном обновлении кода.
+> `deploy.sh` **не** перезапускает `npm run deploy-commands` — если менялись слэш-команды бота, это отдельный разовый шаг (см. A.5). Real-time-релей (B.14) отдельного перезапуска не требует — это тот же процесс `discord-rpg-bot`, `systemctl restart discord-rpg-bot` перезапускает и его тоже.
 
-### B.14. Настроить real-time-синхронизацию PvP-дуэлей (Mercure)
+### B.14. Real-time-синхронизация PvP-дуэлей (WebSocket-релей)
 
 Без этого раздела дуэли всё ещё полностью работают — ход противника просто доходит до игрока только на медленном фоновом поллинге (раз в ~10 секунд, см. `activity/src/api/realtime.ts`), а не мгновенным пушем. Можно пропустить и вернуться к этому разделу позже.
 
-#### B.14.1. Скачать бинарник hub'а
+Отдельного сервиса тут нет — реалтайм обслуживает тот же самый процесс бота (B.11, `bot/src/realtime/server.js`), поднимая рядом с Discord-соединением ещё и небольшой HTTP+WebSocket сервер на `WS_PORT` (по умолчанию 3002): backend шлёт туда `POST /internal/publish` при каждом изменении PvP-боя (тот же секрет `BOT_API_SECRET`, что и везде между backend↔bot), а Activity подключается по WebSocket на `/ws` и подтверждает себя тем же JWT, которым уже пользуется для обычных запросов к API — бот проверяет его подпись локально по публичному ключу backend'а (`backend/config/jwt/public.pem`, тот самый, что уже сгенерирован в B.5 — читается по относительному пути, отдельно настраивать не нужно, если репозиторий склонирован как в B.3), затем сверяет получившийся Discord ID с реальными участниками боя через `GET /api/bot/battles/{id}/participants`.
 
-Закреплена та же версия, что и в корневом `docker-compose.yml` для локальной разработки (`v0.15.11` — последний релиз ещё на "legacy" протоколе Mercure; актуальный `:latest`/1.0 перешёл на access-токены по RFC 9068 с обязательной настройкой issuer/audience, лишняя сложность без явной пользы здесь).
+Ничего дополнительно ставить/скачивать не нужно — `ws`/`jsonwebtoken` устанавливаются вместе с остальными зависимостями бота (`npm install`, B.11/B.13).
 
-**Сначала проверьте архитектуру сервера** — архив нужен строго под неё, иначе бинарник не запустится (`Exec format error`):
+Нужно только:
+1. **Переменные окружения** — уже описаны в B.5 (`backend/.env.local`: `WS_RELAY_URL`; `bot/.env`: `WS_PORT`; `activity/.env.local`: `VITE_WS_URL`).
+2. **Проксирование в nginx** — блок `location /ws` уже добавлен в B.8.
 
-```bash
-uname -m
-```
-- `x86_64` → `mercure_Linux_x86_64.tar.gz`
-- `aarch64`/`arm64` → `mercure_Linux_arm64.tar.gz`
+> Отдельный Discord Developer Portal URL Mapping не нужен — уже существующий маппинг корневого префикса `/` (A.2) проксирует `/.proxy/<любой путь>` на тот же домен, сохраняя путь как есть, так что `/.proxy/ws` (см. `activity/src/api/realtime.ts`) автоматически приходит на `wss://discord-rpg.example.com/ws`.
 
-(другие варианты — смотрите полный список на странице релиза: https://github.com/dunglas/mercure/releases/tag/v0.15.11)
+#### Проверка
 
 ```bash
-curl -fsSL -o /tmp/mercure.tar.gz \
-    https://github.com/dunglas/mercure/releases/download/v0.15.11/mercure_Linux_<ВАША_АРХИТЕКТУРА>.tar.gz
-sudo mkdir -p /opt/mercure
-sudo tar -xzf /tmp/mercure.tar.gz -C /opt/mercure mercure
-sudo chown -R discord-rpg:discord-rpg /opt/mercure
-file /opt/mercure/mercure   # сверьте, что архитектура в выводе совпадает с uname -m
+sudo systemctl status discord-rpg-bot   # должен быть active — это тот же процесс
+curl -i "https://discord-rpg.example.com/api/bot/battles/1/participants" -H "X-Bot-Secret: <BOT_API_SECRET>"
 ```
 
-#### B.14.2. Написать Caddyfile
-
-Hub слушает только на `127.0.0.1` — наружу его отдаёт nginx (см. B.14.4), поэтому свой TLS/автогенерация сертификатов ему не нужны:
-
-```caddyfile
-# /opt/mercure/Caddyfile
-{
-	admin off
-	order mercure after encode
-}
-
-http://127.0.0.1:3000 {
-	encode zstd gzip
-
-	mercure {
-		publisher_jwt {env.MERCURE_JWT_SECRET}
-		subscriber_jwt {env.MERCURE_JWT_SECRET}
-	}
-
-	respond "Not Found" 404
-}
-```
-
-#### B.14.3. systemd-юнит
-
-```ini
-# /etc/systemd/system/discord-rpg-mercure.service
-[Unit]
-Description=discord-rpg Mercure hub (real-time PvP sync)
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/mercure
-Environment=MERCURE_JWT_SECRET=CHANGE_ME_STRONG_SECRET
-ExecStart=/opt/mercure/mercure run --config /opt/mercure/Caddyfile --adapter caddyfile
-Restart=on-failure
-User=discord-rpg
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now discord-rpg-mercure
-```
-
-> `MERCURE_JWT_SECRET` здесь и в `backend/.env.local` (B.14.5) должны **совпадать** — общий секрет, которым подписываются и проверяются токены подписки/публикации, аналогично `BOT_API_SECRET` для бота (B.5).
-
-#### B.14.4. Проксирование в nginx
-
-Добавьте в **уже существующий** `server { listen 443 ssl; ... }` блок из B.8 (рядом с `location ^~ /uploads/`):
-
-```nginx
-    location /.well-known/mercure {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        # NOT $host — Caddy (the hub) routes by Host header against its own
-        # Caddyfile site address (127.0.0.1:3000, see B.14.2); forwarding the
-        # public domain here makes Caddy fail to match any site and silently
-        # answer 200 with an empty body instead of proxying to the hub at
-        # all (found the hard way — this exact bug shipped and had to be
-        # diagnosed live against a real deploy).
-        proxy_set_header Host 127.0.0.1:3000;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 24h;
-    }
-```
-
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-#### B.14.5. Переменные окружения
-
-См. готовые блоки в B.5 (`backend/.env.local`: `MERCURE_URL`/`MERCURE_PUBLIC_URL`/`MERCURE_JWT_SECRET`; `activity/.env.local`: `VITE_MERCURE_URL`).
-
-> Отдельный Discord Developer Portal URL Mapping для Mercure **не нужен** — уже существующий маппинг корневого префикса `/` (A.2) проксирует `/.proxy/<любой путь>` на тот же домен, сохраняя путь как есть, так что `/.proxy/.well-known/mercure` (см. `activity/src/api/realtime.ts`) автоматически приходит на `https://discord-rpg.example.com/.well-known/mercure`.
-
-#### B.14.6. Проверка
-
-```bash
-curl -i "https://discord-rpg.example.com/.well-known/mercure?topic=test"
-```
-
-Должен вернуться `401 Unauthorized` (не `502`/`404`/таймаут) — значит nginx достучался до hub'а, и тот сам корректно отклоняет запрос без валидного токена подписки. Полную проверку удобнее всего сделать через реальную PvP-дуэль между двумя аккаунтами: ход соперника должен появляться почти мгновенно, а не только раз в ~10 секунд.
+Вторая команда (замените `1` на реальный ID PvP-боя) должна вернуть `{"characterDiscordId":...,"opponentDiscordId":...}`, а не `404`/`502` — значит backend видит бота и наоборот. Полную проверку удобнее всего сделать через реальную PvP-дуэль между двумя аккаунтами: ход соперника должен появляться почти мгновенно, а не только раз в ~10 секунд.
 
 ### B.15. Чек-лист безопасности перед запуском
 

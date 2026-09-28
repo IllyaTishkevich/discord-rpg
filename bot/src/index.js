@@ -3,6 +3,7 @@ import { Client, Collection, GatewayIntentBits } from "discord.js";
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { startRealtimeServer } from "./realtime/server.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -31,3 +32,5 @@ for (const file of readdirSync(eventsDir).filter((f) => f.endsWith(".js"))) {
 }
 
 client.login(process.env.DISCORD_BOT_TOKEN);
+
+startRealtimeServer(Number(process.env.WS_PORT ?? 3002));

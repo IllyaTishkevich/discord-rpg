@@ -19,7 +19,7 @@ use App\Service\LootService;
 use App\Service\QuestService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
-use Symfony\Component\Mercure\HubInterface;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Focused on the per-move turn timer (BattleService::applyMoveTimeoutIfExpired()/
@@ -52,7 +52,9 @@ class BattleServiceTest extends TestCase
             // Never actually called — every publishPvpUpdate() call site is
             // gated behind isPvp(), and every scenario here is PvE (see class
             // docblock).
-            mercureHub: $this->createMock(HubInterface::class),
+            httpClient: $this->createMock(HttpClientInterface::class),
+            wsRelayUrl: 'http://example.test/internal/publish',
+            botApiSecret: 'test-secret',
         );
     }
 
