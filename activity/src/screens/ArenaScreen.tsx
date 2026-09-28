@@ -256,6 +256,24 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   // this cycle is left to show", not "nothing has ever happened yet".
   const [playerRestingMove, setPlayerRestingMove] = useState<StageMove | null>(null);
   const [opponentRestingMove, setOpponentRestingMove] = useState<StageMove | null>(null);
+  // Mirrors of the two states above, kept in lockstep with every setter call
+  // below — needed because scheduleCircleToLog's "is this still what's
+  // showing, or did something replace it already" check must compare against
+  // the exact object currently resting, not a value it recomputes itself:
+  // aggregateMove() returns a brand-new object every call, so two calls
+  // describing the very same bits are never === to each other. Reading these
+  // refs (always in sync) instead of re-deriving the value sidesteps that.
+  const playerRestingMoveRef = useRef<StageMove | null>(null);
+  const opponentRestingMoveRef = useRef<StageMove | null>(null);
+
+  function updatePlayerRestingMove(move: StageMove | null) {
+    playerRestingMoveRef.current = move;
+    setPlayerRestingMove(move);
+  }
+  function updateOpponentRestingMove(move: StageMove | null) {
+    opponentRestingMoveRef.current = move;
+    setOpponentRestingMove(move);
+  }
 
   function spawnFlyingBits(entries: FlyingBit[]) {
     if (entries.length === 0) return;
@@ -296,7 +314,12 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
   ) {
     if (indices.length === 0) return;
     const setRestingMove = side === "player" ? setPlayerRestingMove : setOpponentRestingMove;
-    const clearIfStillCurrent = () => setRestingMove((current) => (current === restingMove ? null : current));
+    const restingMoveRef = side === "player" ? playerRestingMoveRef : opponentRestingMoveRef;
+    const clearIfStillCurrent = () => {
+      if (restingMoveRef.current !== restingMove) return;
+      restingMoveRef.current = null;
+      setRestingMove(null);
+    };
     window.setTimeout(() => {
       const circleEl = (side === "player" ? playerCircleRef : opponentCircleRef).current;
       const logEl = (side === "player" ? playerLogPanelRef : opponentLogPanelRef).current;
@@ -364,8 +387,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
 
     const playerMove = aggregateMove(playerNewlyUsed, next.playerFaces, next.playerMultipliers, next.playerIcons);
     const opponentMove = aggregateMove(opponentNewlyUsed, next.opponentFaces, next.opponentMultipliers, next.opponentIcons);
-    if (playerMove) setPlayerRestingMove(playerMove);
-    if (opponentMove) setOpponentRestingMove(opponentMove);
+    if (playerMove) updatePlayerRestingMove(playerMove);
+    if (opponentMove) updateOpponentRestingMove(opponentMove);
 
     const playerNeedingFlyIn = playerNewlyUsed.filter((index) => !selectedIndices.includes(index));
     spawnFlyingBits([
@@ -415,7 +438,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
         next.playerFaces,
         next.playerMultipliers,
         next.playerIcons,
-        aggregateMove(playerToReveal, next.playerFaces, next.playerMultipliers, next.playerIcons),
+        playerRestingMoveRef.current,
       );
     }
     if (!opponentPending) {
@@ -425,7 +448,7 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
         next.opponentFaces,
         next.opponentMultipliers,
         next.opponentIcons,
-        aggregateMove(opponentToReveal, next.opponentFaces, next.opponentMultipliers, next.opponentIcons),
+        opponentRestingMoveRef.current,
       );
     }
 
@@ -464,8 +487,8 @@ export function ArenaScreen({ initialBattle, character, onFinished }: Props) {
       setOpponentUsed(lastOpponentUsedRef.current);
       setPlayerLogRevealed(result.playerFaces.map(() => false));
       setOpponentLogRevealed(result.opponentFaces.map(() => false));
-      setPlayerRestingMove(null);
-      setOpponentRestingMove(null);
+      updatePlayerRestingMove(null);
+      updateOpponentRestingMove(null);
       setPlayerMultipliers(result.playerMultipliers);
       setOpponentMultipliers(result.opponentMultipliers);
       setPlayerIcons(result.playerIcons);
